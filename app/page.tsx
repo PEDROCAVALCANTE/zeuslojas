@@ -37,7 +37,8 @@ import {
   setDoc,
   addDoc,
   query,
-  where
+  where,
+  runTransaction
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Tenant, User, Produto, Estoque, Movimentacao, Transacao, Caixa, NotaFiscal } from '@/lib/types';
@@ -161,19 +162,97 @@ export default function ZeusApp() {
 
   const handleAction = async (endpoint: string, payload: any) => {
     try {
-      const res = await fetch(`/api/${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, criado_por: auth.currentUser?.uid })
-      });
-      if (res.ok) {
+      const criado_por = auth.currentUser?.uid;
+      if (!criado_por) throw new Error("Usuário não autenticado");
+
+      if (endpoint === 'estoque/entrada' || endpoint === 'estoque/saida' || endpoint === 'estoque/transferencia') {
+        await runTransaction(db, async (transaction) => {
+           const movementRef = doc(collection(db, 'movimentacoes'));
+           const now = new Date().toISOString(); 
+           
+           if (endpoint === 'estoque/entrada') {
+             const stockId = `${payload.produto_id}_${payload.tenant_id}`;
+             const stockRef = doc(db, 'estoque', stockId);
+             const stockDoc = await transaction.get(stockRef);
+             const currentQty = stockDoc.exists() ? stockDoc.data().quantidade : 0;
+             transaction.set(stockRef, {
+                produto_id: payload.produto_id,
+                tenant_id: payload.tenant_id,
+                quantidade: currentQty + payload.quantidade,
+                updated_at: now
+             }, { merge: true });
+             
+             transaction.set(movementRef, {
+                tipo: 'ENTRADA',
+                produto_id: payload.produto_id,
+                quantidade: payload.quantidade,
+                tenant_origem: null,
+                tenant_destino: payload.tenant_id,
+                criado_por,
+                created_at: now,
+                ...(payload.mapped_product_id ? { mapped_product_id: payload.mapped_product_id } : {})
+             });
+           } else if (endpoint === 'estoque/saida') {
+             const stockId = `${payload.produto_id}_${payload.tenant_id}`;
+             const stockRef = doc(db, 'estoque', stockId);
+             const stockDoc = await transaction.get(stockRef);
+             if (!stockDoc.exists() || stockDoc.data().quantidade < payload.quantidade) throw new Error('Estoque insuficiente');
+             
+             transaction.update(stockRef, {
+                quantidade: stockDoc.data().quantidade - payload.quantidade,
+                updated_at: now
+             });
+             
+             transaction.set(movementRef, {
+                tipo: 'SAIDA',
+                produto_id: payload.produto_id,
+                quantidade: payload.quantidade,
+                tenant_origem: payload.tenant_id,
+                tenant_destino: null,
+                criado_por,
+                created_at: now,
+                ...(payload.mapped_product_id ? { mapped_product_id: payload.mapped_product_id } : {})
+             });
+           } else if (endpoint === 'estoque/transferencia') {
+             const origRef = doc(db, 'estoque', `${payload.produto_id}_${payload.tenant_origem}`);
+             const destRef = doc(db, 'estoque', `${payload.produto_id}_${payload.tenant_destino}`);
+             const origDoc = await transaction.get(origRef);
+             if (!origDoc.exists() || origDoc.data().quantidade < payload.quantidade) throw new Error('Estoque origem insuficiente');
+             
+             const destDoc = await transaction.get(destRef);
+             const destQty = destDoc.exists() ? destDoc.data().quantidade : 0;
+             
+             transaction.update(origRef, { quantidade: origDoc.data().quantidade - payload.quantidade, updated_at: now });
+             transaction.set(destRef, { produto_id: payload.produto_id, tenant_id: payload.tenant_destino, quantidade: destQty + payload.quantidade, updated_at: now }, { merge: true });
+             
+             transaction.set(movementRef, {
+                tipo: 'TRANSFERENCIA',
+                produto_id: payload.produto_id,
+                quantidade: payload.quantidade,
+                tenant_origem: payload.tenant_origem,
+                tenant_destino: payload.tenant_destino,
+                criado_por,
+                created_at: now
+             });
+           }
+        });
         await fetchData();
       } else {
-        const error = await res.json();
-        alert(`Erro: ${error.error}`);
+        const res = await fetch(`/api/${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, criado_por: auth.currentUser?.uid })
+        });
+        if (res.ok) {
+          await fetchData();
+        } else {
+          const error = await res.json();
+          alert(`Erro: ${error.error}`);
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error performing action', err);
+      alert(`Erro: ${err.message}`);
     }
   };
 
@@ -488,7 +567,12 @@ export default function ZeusApp() {
                           <tbody>
                             {filteredMovements.slice(0, 5).map(m => (
                               <tr key={m.id}>
-                                <td className="font-medium text-slate-800">{getProductName(m.produto_id)}</td>
+                                <td className="font-medium text-slate-800">
+                                  {getProductName(m.produto_id)}
+                                  {m.mapped_product_id && (
+                                    <div className="text-[9px] font-black text-sky-500 uppercase mt-0.5">Map: {m.mapped_product_id}</div>
+                                  )}
+                                </td>
                                 <td>{getTenantName(m.tipo === 'ENTRADA' ? m.tenant_destino : m.tenant_origem)}</td>
                                 <td>
                                   <span className={`tag ${
@@ -641,6 +725,7 @@ function InventoryManagement({ data, selectedTenantId, handleAction }: { data: a
     // For Pointing (Baixa e Apontamento)
     produto_origem_id: '',
     produto_destino_id: '',
+    mapped_product_id: '',
     // For Product Registration
     codigo: '',
     nome: '',
@@ -676,13 +761,15 @@ function InventoryManagement({ data, selectedTenantId, handleAction }: { data: a
         await handleAction('estoque/saida', {
           produto_id: form.produto_origem_id,
           tenant_id: selectedTenantId === 'all' ? form.tenant_id : selectedTenantId,
-          quantidade: form.quantidade
+          quantidade: form.quantidade,
+          mapped_product_id: form.mapped_product_id || null
         });
         // Entrada in Destino
         await handleAction('estoque/entrada', {
           produto_id: form.produto_destino_id,
           tenant_id: selectedTenantId === 'all' ? form.tenant_id : selectedTenantId,
-          quantidade: form.quantidade
+          quantidade: form.quantidade,
+          mapped_product_id: form.mapped_product_id || null
         });
       } else {
         const endpoint = `estoque/${modalOpen}`;
@@ -691,7 +778,7 @@ function InventoryManagement({ data, selectedTenantId, handleAction }: { data: a
       setModalOpen(null);
       setForm({ 
         produto_id: '', tenant_id: '', tenant_origem: '', tenant_destino: '', quantidade: 0,
-        produto_origem_id: '', produto_destino_id: '', codigo: '', nome: '', categoria: '', preco: 0, estoque_minimo: 0
+        produto_origem_id: '', produto_destino_id: '', mapped_product_id: '', codigo: '', nome: '', categoria: '', preco: 0, estoque_minimo: 0
       });
       window.location.reload(); 
     } catch (e: any) {
@@ -919,6 +1006,10 @@ function InventoryManagement({ data, selectedTenantId, handleAction }: { data: a
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Quantidade de Conversão</label>
                     <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" value={form.quantidade} onChange={e => setForm({...form, quantidade: Number(e.target.value)})} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Mapear para Código Granel (Opcional)</label>
+                    <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" placeholder="Ex: 01HG" value={form.mapped_product_id} onChange={e => setForm({...form, mapped_product_id: e.target.value})} />
                   </div>
                   {selectedTenantId === 'all' && (
                     <div>
@@ -1400,7 +1491,7 @@ function InvoiceManagement({ data, onAction }: { data: any, onAction: any }) {
     tenant_id: '',
     items: [] as any[]
   });
-  const [currentItem, setCurrentItem] = useState({ produto_id: '', quantidade_original: 0, preco_custo: 0, mapped_product_id: '' });
+  const [currentItem, setCurrentItem] = useState({ produto_id: '', quantidade_original: 0, preco_custo: 0 });
 
   const handleSaveNota = async () => {
     try {
@@ -1420,7 +1511,7 @@ function InvoiceManagement({ data, onAction }: { data: any, onAction: any }) {
   const addItem = () => {
     if (!currentItem.produto_id || !currentItem.quantidade_original) return;
     setForm({ ...form, items: [...form.items, currentItem] });
-    setCurrentItem({ produto_id: '', quantidade_original: 0, preco_custo: 0, mapped_product_id: '' });
+    setCurrentItem({ produto_id: '', quantidade_original: 0, preco_custo: 0 });
   };
 
   return (
@@ -1455,9 +1546,6 @@ function InvoiceManagement({ data, onAction }: { data: any, onAction: any }) {
                     <span className="font-bold">{data.products.find((p: any) => p.id === it.produto_id)?.nome}</span>
                     <div className="text-right">
                        <div className="font-black text-slate-900">{it.quantidade_restante} / {it.quantidade_original}</div>
-                       {it.mapped_product_id && (
-                         <div className="text-[9px] text-sky-500 uppercase font-black">Mapped to Granel ID: {it.mapped_product_id}</div>
-                       )}
                     </div>
                   </div>
                 ))}
@@ -1502,10 +1590,6 @@ function InvoiceManagement({ data, onAction }: { data: any, onAction: any }) {
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Qtd Entrada</label>
                     <input type="number" className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm" value={currentItem.quantidade_original} onChange={e => setCurrentItem({...currentItem, quantidade_original: Number(e.target.value)})} />
                   </div>
-                  <div className="md:col-span-2">
-                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Mapear para Código Granel (Opcional)</label>
-                     <input type="text" className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm" placeholder="Ex: 01HG" value={currentItem.mapped_product_id} onChange={e => setCurrentItem({...currentItem, mapped_product_id: e.target.value})} />
-                  </div>
                   <button onClick={addItem} className="md:col-span-2 bg-blue-600 text-white font-bold py-3 rounded-xl text-xs uppercase tracking-widest hover:bg-blue-700 transition-all">Adicionar Item na Lista</button>
                </div>
             </div>
@@ -1515,7 +1599,6 @@ function InvoiceManagement({ data, onAction }: { data: any, onAction: any }) {
                   {form.items.map((it, idx) => (
                     <li key={idx} className="text-xs bg-white border border-slate-100 p-3 rounded-xl flex justify-between items-center shadow-sm">
                       <span className="font-bold">{data.products.find((p: any) => p.id === it.produto_id)?.nome} (Qtd: {it.quantidade_original})</span>
-                      {it.mapped_product_id && <span className="text-[9px] font-black text-sky-500 uppercase">→ {it.mapped_product_id}</span>}
                     </li>
                   ))}
                </ul>

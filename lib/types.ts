@@ -48,6 +48,7 @@ export interface Movimentacao {
   tenant_destino: string | null;
   criado_por: string;
   created_at: string;
+  mapped_product_id?: string;
 }
 
 export type TransacaoTipo = 'RECEITA' | 'DESPESA';
