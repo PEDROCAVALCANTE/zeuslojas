@@ -129,7 +129,8 @@ service cloud.firestore {
     // Notas Fiscais
     match /notas_fiscais/{notaId} {
       allow read: if belongsToTenant(resource.data.tenant_id);
-      allow write: if isSuperAdmin() && isValidNota(incoming());
+      allow create, update: if isSuperAdmin() && isValidNota(incoming());
+      allow delete: if isSuperAdmin();
     }
 
     // Users

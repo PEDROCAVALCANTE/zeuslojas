@@ -19,7 +19,8 @@ import {
   FileText,
   CheckCircle2,
   ScanLine,
-  Truck
+  Truck,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
@@ -36,6 +37,7 @@ import {
   getDoc,
   setDoc,
   addDoc,
+  deleteDoc,
   query,
   where,
   runTransaction
@@ -1521,6 +1523,16 @@ function InvoiceManagement({ data, selectedTenantId, onAction }: { data: any, se
     setCurrentItem({ produto_id: '', quantidade_original: 0, preco_custo: 0 });
   };
 
+  const handleDeleteNota = async (id: string) => {
+    if (!confirm('Deseja realmente excluir esta Nota Fiscal?')) return;
+    try {
+      await deleteDoc(doc(db, 'notas_fiscais', id));
+      onAction();
+    } catch (e: any) {
+      alert(`Erro ao excluir: ${e.message}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -1541,11 +1553,16 @@ function InvoiceManagement({ data, selectedTenantId, onAction }: { data: any, se
                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">NF: {n.numero_nota}</div>
                    <h3 className="text-lg font-black text-slate-900">{n.fornecedor}</h3>
                 </div>
-                {n.rastreavel && (
-                  <span className="flex items-center gap-1 text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded-full uppercase italic">
-                    <ScanLine size={10} /> Rastreável
-                  </span>
-                )}
+                <div className="flex flex-col items-end gap-2">
+                  <button onClick={() => handleDeleteNota(n.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-1 rounded-md transition-colors" title="Excluir Nota">
+                    <Trash2 size={14} />
+                  </button>
+                  {n.rastreavel && (
+                    <span className="flex items-center gap-1 text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded-full uppercase italic">
+                      <ScanLine size={10} /> Rastreável
+                    </span>
+                  )}
+                </div>
              </div>
              <div className="space-y-2">
                 {n.items.map((it: any, idx: number) => (
