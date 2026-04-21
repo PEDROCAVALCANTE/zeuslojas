@@ -70,9 +70,42 @@
       "properties": {
         "tipo": { "type": "string", "enum": ["RECEITA", "DESPESA"] },
         "valor": { "type": "number" },
+        "forma_pagamento": { "type": "string", "enum": ["PIX", "CARTAO", "DINHEIRO"] },
         "tenant_id": { "type": "string" },
         "descricao": { "type": "string" },
         "categoria": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Caixa": {
+      "title": "Fechamento de Caixa",
+      "description": "Consolidado diário enviado pela loja para validação do Super Admin",
+      "type": "object",
+      "properties": {
+        "tenant_id": { "type": "string" },
+        "data": { "type": "string" },
+        "status": { "type": "string", "enum": ["ABERTO", "FECHADO", "VALIDADO"] },
+        "total_vendas": { "type": "number" },
+        "total_pix": { "type": "number" },
+        "total_cartao": { "type": "number" },
+        "total_dinheiro": { "type": "number" },
+        "criado_por": { "type": "string" },
+        "validado_por": { "type": "string" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "NotaFiscal": {
+      "title": "Entrada de Nota Fiscal",
+      "description": "Registro de compras com rastreamento opcional de estoque",
+      "type": "object",
+      "properties": {
+        "numero_nota": { "type": "string" },
+        "fornecedor": { "type": "string" },
+        "data_emissao": { "type": "string" },
+        "rastreavel": { "type": "boolean" },
+        "tenant_id": { "type": "string" },
+        "items": { "type": "array" },
+        "criado_por": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" }
       }
     }
@@ -101,6 +134,14 @@
     "transacoes/{txId}": {
       "schema": "Transacao",
       "description": "Registros financeiros"
+    },
+    "caixas/{caixaId}": {
+      "schema": "Caixa",
+      "description": "Registros de fechamento de caixa diário"
+    },
+    "notas_fiscais/{notaId}": {
+      "schema": "NotaFiscal",
+      "description": "Entradas de notas fiscais"
     }
   }
 }

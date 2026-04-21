@@ -14,7 +14,12 @@ import {
   ChevronDown,
   AlertTriangle,
   TrendingUp,
-  History
+  History,
+  Wallet,
+  FileText,
+  CheckCircle2,
+  ScanLine,
+  Truck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
@@ -35,7 +40,7 @@ import {
   where
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { Tenant, User, Produto, Estoque, Movimentacao, Transacao } from '@/lib/types';
+import { Tenant, User, Produto, Estoque, Movimentacao, Transacao, Caixa, NotaFiscal } from '@/lib/types';
 
 export default function ZeusApp() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -46,6 +51,8 @@ export default function ZeusApp() {
     stock: Estoque[];
     movements: Movimentacao[];
     transactions: Transacao[];
+    caixas: Caixa[];
+    notas: NotaFiscal[];
     users: User[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,12 +77,14 @@ export default function ZeusApp() {
         }
       };
 
-      const [tenants, products, stock, movements, transactions] = await Promise.all([
+      const [tenants, products, stock, movements, transactions, caixas, notas] = await Promise.all([
         fetchSnap('tenants'),
         fetchSnap('produtos'),
         fetchSnap('estoque'),
         fetchSnap('movimentacoes'),
-        fetchSnap('transacoes')
+        fetchSnap('transacoes'),
+        fetchSnap('caixas'),
+        fetchSnap('notas_fiscais')
       ]);
 
       setData({
@@ -84,13 +93,15 @@ export default function ZeusApp() {
         stock: stock as any,
         movements: movements as any,
         transactions: transactions as any,
+        caixas: caixas as any,
+        notas: notas as any,
         users: []
       });
     } catch (err: any) {
       console.error('Critical Fetch Error:', err.message);
       // Fallback to empty non-null data to avoid the error screen if possible
       setData({
-        tenants: [], products: [], stock: [], movements: [], transactions: [], users: []
+        tenants: [], products: [], stock: [], movements: [], transactions: [], caixas: [], notas: [], users: []
       });
     } finally {
       setLoading(false);
@@ -342,6 +353,22 @@ export default function ZeusApp() {
             onClick={() => setActiveTab('lojas')} 
           />
           <NavItem 
+            icon={<Wallet size={20} className="text-violet-500" />} 
+            label="Módulo Caixa" 
+            active={activeTab === 'caixa'} 
+            activeColor="text-violet-600"
+            onClick={() => setActiveTab('caixa')} 
+          />
+          {userProfile?.role === 'SUPER_ADMIN' && (
+            <NavItem 
+              icon={<FileText size={20} className="text-orange-500" />} 
+              label="Notas Fiscais" 
+              active={activeTab === 'notas'} 
+              activeColor="text-orange-600"
+              onClick={() => setActiveTab('notas')} 
+            />
+          )}
+          <NavItem 
             icon={<BarChart3 size={20} className="text-rose-500" />} 
             label="Relatórios" 
             active={activeTab === 'relatorios'} 
@@ -541,7 +568,29 @@ export default function ZeusApp() {
                 />
               )}
 
-              {activeTab === 'lojas' && <TenantsManagement tenants={data.tenants} handleAction={handleAction} />}
+              {activeTab === 'lojas' && (
+                <TenantsManagement 
+                  tenants={data.tenants} 
+                  onManage={(id) => {
+                    setSelectedTenantId(id);
+                    setActiveTab('dashboard');
+                  }} 
+                />
+              )}
+              {activeTab === 'caixa' && (
+                <CashierView 
+                  data={data} 
+                  userProfile={userProfile} 
+                  selectedTenantId={selectedTenantId}
+                  onAction={() => fetchData()}
+                />
+              )}
+              {activeTab === 'notas' && userProfile?.role === 'SUPER_ADMIN' && (
+                <InvoiceManagement 
+                  data={data} 
+                  onAction={() => fetchData()}
+                />
+              )}
               {activeTab === 'relatorios' && <ReportsView data={data} selectedTenantId={selectedTenantId} />}
             </motion.div>
           </AnimatePresence>
@@ -889,14 +938,13 @@ function FinancialManagement({ transactions, tenants, selectedTenantId, handleAc
   );
 }
 
-function TenantsManagement({ tenants, handleAction }: { tenants: Tenant[], handleAction: any }) {
+function TenantsManagement({ tenants, onManage }: { tenants: Tenant[], onManage: (id: string) => void }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [nome, setNome] = useState('');
 
   const submit = async () => {
     if (!nome) return;
     try {
-      // Direct Firestore Write for robustness
       const newTenant = {
         nome,
         ativo: true,
@@ -905,7 +953,7 @@ function TenantsManagement({ tenants, handleAction }: { tenants: Tenant[], handl
       await addDoc(collection(db, 'tenants'), newTenant);
       setModalOpen(false);
       setNome('');
-      window.location.reload(); // Quick refresh for now to see new data
+      window.location.reload(); 
     } catch (e: any) {
       alert(`Erro ao criar loja: ${e.message}`);
     }
@@ -928,7 +976,11 @@ function TenantsManagement({ tenants, handleAction }: { tenants: Tenant[], handl
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {tenants.map(t => (
-            <div key={t.id} className="kpi-card hover:border-sky-400 transition-all cursor-pointer group">
+            <div 
+              key={t.id} 
+              onClick={() => onManage(t.id)}
+              className="kpi-card hover:border-sky-400 transition-all cursor-pointer group"
+            >
               <div className="flex justify-between items-start">
                 <Store size={24} className="text-sky-400" />
                 <span className="tag tag-success">Ativa</span>
@@ -937,7 +989,7 @@ function TenantsManagement({ tenants, handleAction }: { tenants: Tenant[], handl
               <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tenant ID: {t.id}</div>
               <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center text-[11px] text-slate-500 font-medium">
                 <span>Criado em {new Date(t.created_at).toLocaleDateString('pt-br')}</span>
-                <span className="text-blue-600 font-bold group-hover:underline">Gerenciar Unidade →</span>
+                <span className="text-blue-600 font-bold group-hover:translate-x-1 transition-transform">Gerenciar Unidade →</span>
               </div>
             </div>
           ))}
@@ -990,6 +1042,275 @@ function TenantsManagement({ tenants, handleAction }: { tenants: Tenant[], handl
             </motion.div>
           </div>
         )}
+    </div>
+  );
+}
+
+
+function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: any, userProfile: any, selectedTenantId: string, onAction: any }) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [cashierForm, setCashierForm] = useState({ 
+    total_pix: 0, 
+    total_cartao: 0, 
+    total_dinheiro: 0,
+    tenant_id: userProfile?.tenant_id || '' 
+  });
+
+  const isSuper = userProfile?.role === 'SUPER_ADMIN';
+  const currentTenantId = isSuper ? selectedTenantId : userProfile?.tenant_id;
+  const caixas = data.caixas.filter((c: any) => c.tenant_id === currentTenantId || currentTenantId === 'all');
+
+  const handleSubmitCaixa = async () => {
+    try {
+      const total = cashierForm.total_pix + cashierForm.total_cartao + cashierForm.total_dinheiro;
+      await addDoc(collection(db, 'caixas'), {
+        ...cashierForm,
+        total_vendas: total,
+        status: 'FECHADO',
+        data: new Date().toISOString().split('T')[0],
+        criado_por: auth.currentUser?.uid,
+        updated_at: new Date().toISOString()
+      });
+      setModalOpen(false);
+      onAction();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const handleValidate = async (id: string) => {
+    try {
+      await setDoc(doc(db, 'caixas', id), { 
+        status: 'VALIDADO', 
+        validado_por: auth.currentUser?.uid,
+        updated_at: new Date().toISOString() 
+      }, { merge: true });
+      onAction();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Módulo Caixa</h2>
+          <p className="text-slate-500 text-sm font-medium italic">Gestão de fechamento diário e conferência de valores.</p>
+        </div>
+        {!isSuper && (
+          <button onClick={() => setModalOpen(true)} className="btn-primary flex items-center gap-2">
+            <Plus size={16} /> Fechar Caixa Hoje
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-4">
+        {caixas.map((c: any) => (
+          <div key={c.id} className="kpi-card flex flex-col md:flex-row md:items-center justify-between gap-6 border-l-4 border-violet-500">
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">DATA: {new Date(c.data).toLocaleDateString('pt-br')}</div>
+              <h3 className="text-lg font-black text-slate-900">{data.tenants.find((t: any) => t.id === c.tenant_id)?.nome}</h3>
+              <div className="flex gap-4 mt-2">
+                <div className="flex items-center gap-1 text-xs font-bold text-slate-500">
+                  <div className="w-2 h-2 rounded-full bg-blue-500" title="Pix"></div> Pix: R$ {c.total_pix}
+                </div>
+                <div className="flex items-center gap-1 text-xs font-bold text-slate-500">
+                  <div className="w-2 h-2 rounded-full bg-orange-500" title="Cartão"></div> Cartão: R$ {c.total_cartao}
+                </div>
+                <div className="flex items-center gap-1 text-xs font-bold text-slate-500">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" title="Dinheiro"></div> Dinheiro: R$ {c.total_dinheiro}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+               <div className="text-right">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">Total Consolidado</div>
+                  <div className="text-xl font-black text-slate-900 font-mono">R$ {c.total_vendas.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</div>
+               </div>
+               <div className="flex flex-col items-end gap-2">
+                  <span className={`tag ${c.status === 'VALIDADO' ? 'tag-success' : 'tag-warning'}`}>
+                    {c.status}
+                  </span>
+                  {isSuper && c.status === 'FECHADO' && (
+                    <button onClick={() => handleValidate(c.id)} className="text-xs font-black text-blue-600 flex items-center gap-1 hover:underline">
+                      <CheckCircle2 size={12} /> Validar Caixa
+                    </button>
+                  )}
+               </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {modalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic">Fechamento de Caixa Diário</h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Total em PIX</label>
+                  <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm" value={cashierForm.total_pix} onChange={e => setCashierForm({...cashierForm, total_pix: Number(e.target.value)})} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Total em CARTÃO</label>
+                  <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm" value={cashierForm.total_cartao} onChange={e => setCashierForm({...cashierForm, total_cartao: Number(e.target.value)})} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Total em DINHEIRO</label>
+                  <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm" value={cashierForm.total_dinheiro} onChange={e => setCashierForm({...cashierForm, total_dinheiro: Number(e.target.value)})} />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-8">
+              <button onClick={() => setModalOpen(false)} className="flex-1 btn-secondary text-sm font-bold">Cancelar</button>
+              <button onClick={handleSubmitCaixa} className="flex-1 btn-primary text-sm font-bold">Enviar para Conferência</button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InvoiceManagement({ data, onAction }: { data: any, onAction: any }) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState({
+    numero_nota: '',
+    fornecedor: '',
+    rastreavel: true,
+    tenant_id: '',
+    items: [] as any[]
+  });
+  const [currentItem, setCurrentItem] = useState({ produto_id: '', quantidade_original: 0, preco_custo: 0, mapped_product_id: '' });
+
+  const handleSaveNota = async () => {
+    try {
+      await addDoc(collection(db, 'notas_fiscais'), {
+        ...form,
+        items: form.items.map(i => ({ ...i, quantidade_restante: i.quantidade_original })),
+        criado_por: auth.currentUser?.uid,
+        created_at: new Date().toISOString()
+      });
+      setModalOpen(false);
+      onAction();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const addItem = () => {
+    if (!currentItem.produto_id || !currentItem.quantidade_original) return;
+    setForm({ ...form, items: [...form.items, currentItem] });
+    setCurrentItem({ produto_id: '', quantidade_original: 0, preco_custo: 0, mapped_product_id: '' });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Entrada de Notas Fiscais</h2>
+          <p className="text-slate-500 text-sm font-medium italic">Rastreamento de mercadorias e conversão automática para granel.</p>
+        </div>
+        <button onClick={() => setModalOpen(true)} className="btn-primary flex items-center gap-2">
+          <Truck size={16} /> Nova Entrada
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {data.notas.map((n: any) => (
+          <div key={n.id} className="kpi-card border-t-4 border-orange-500">
+             <div className="flex justify-between items-start mb-4">
+                <div>
+                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">NF: {n.numero_nota}</div>
+                   <h3 className="text-lg font-black text-slate-900">{n.fornecedor}</h3>
+                </div>
+                {n.rastreavel && (
+                  <span className="flex items-center gap-1 text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded-full uppercase italic">
+                    <ScanLine size={10} /> Rastreável
+                  </span>
+                )}
+             </div>
+             <div className="space-y-2">
+                {n.items.map((it: any, idx: number) => (
+                  <div key={idx} className="flex justify-between items-center text-xs p-2 bg-slate-50 rounded-lg">
+                    <span className="font-bold">{data.products.find((p: any) => p.id === it.produto_id)?.nome}</span>
+                    <div className="text-right">
+                       <div className="font-black text-slate-900">{it.quantidade_restante} / {it.quantidade_original}</div>
+                       {it.mapped_product_id && (
+                         <div className="text-[9px] text-sky-500 uppercase font-black">Mapped to Granel ID: {it.mapped_product_id}</div>
+                       )}
+                    </div>
+                  </div>
+                ))}
+             </div>
+          </div>
+        ))}
+      </div>
+
+      {modalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-white rounded-2xl p-8 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic border-b pb-4">Registrar Entrada de Mercadoria</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Número da Nota/Documento</label>
+                <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm" value={form.numero_nota} onChange={e => setForm({...form, numero_nota: e.target.value})} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Fornecedor</label>
+                <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm" value={form.fornecedor} onChange={e => setForm({...form, fornecedor: e.target.value})} />
+              </div>
+              <div className="md:col-span-2 flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-dashed border-slate-300">
+                 <input type="checkbox" id="rastreavel" className="w-4 h-4" checked={form.rastreavel} onChange={e => setForm({...form, rastreavel: e.target.checked})} />
+                 <label htmlFor="rastreavel" className="text-xs font-bold text-slate-700 uppercase flex items-center gap-2">
+                   <ScanLine size={14} className="text-blue-500" /> Ativar Rastreamento de Estoque (Lote/Venda)
+                 </label>
+              </div>
+            </div>
+
+            <div className="border-t pt-6 bg-blue-50/30 p-4 rounded-2xl border border-blue-100">
+               <h4 className="text-[10px] font-black text-blue-600 uppercase mb-4 italic">Adicionar Itens da Nota</h4>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Produto Original</label>
+                    <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm" value={currentItem.produto_id} onChange={e => setCurrentItem({...currentItem, produto_id: e.target.value})}>
+                      <option value="">Selecione...</option>
+                      {data.products.map((p: any) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Qtd Entrada</label>
+                    <input type="number" className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm" value={currentItem.quantidade_original} onChange={e => setCurrentItem({...currentItem, quantidade_original: Number(e.target.value)})} />
+                  </div>
+                  <div className="md:col-span-2">
+                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Mapear para Código Granel (Opcional)</label>
+                     <input type="text" className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm" placeholder="Ex: 01HG" value={currentItem.mapped_product_id} onChange={e => setCurrentItem({...currentItem, mapped_product_id: e.target.value})} />
+                  </div>
+                  <button onClick={addItem} className="md:col-span-2 bg-blue-600 text-white font-bold py-3 rounded-xl text-xs uppercase tracking-widest hover:bg-blue-700 transition-all">Adicionar Item na Lista</button>
+               </div>
+            </div>
+
+            <div className="mt-6">
+               <ul className="space-y-2">
+                  {form.items.map((it, idx) => (
+                    <li key={idx} className="text-xs bg-white border border-slate-100 p-3 rounded-xl flex justify-between items-center shadow-sm">
+                      <span className="font-bold">{data.products.find((p: any) => p.id === it.produto_id)?.nome} (Qtd: {it.quantidade_original})</span>
+                      {it.mapped_product_id && <span className="text-[9px] font-black text-sky-500 uppercase">→ {it.mapped_product_id}</span>}
+                    </li>
+                  ))}
+               </ul>
+            </div>
+
+            <div className="flex gap-2 mt-10">
+              <button onClick={() => setModalOpen(false)} className="flex-1 btn-secondary text-sm font-bold">Descartar</button>
+              <button onClick={handleSaveNota} className="flex-1 btn-primary text-sm font-bold" disabled={form.items.length === 0 || !form.numero_nota}>Processar Nota Fiscal</button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

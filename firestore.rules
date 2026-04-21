@@ -95,10 +95,40 @@ service cloud.firestore {
       return data.tipo in ['RECEITA', 'DESPESA'] &&
              data.valor is number && data.valor >= 0 &&
              data.tenant_id is string && isValidId(data.tenant_id) &&
-             data.descricao is string && data.descricao.size() <= 200;
+             data.descricao is string && data.descricao.size() <= 200 &&
+             (!('forma_pagamento' in data) || data.forma_pagamento in ['PIX', 'CARTAO', 'DINHEIRO']);
+    }
+
+    function isValidCaixa(data) {
+      return data.status in ['ABERTO', 'FECHADO', 'VALIDADO'] &&
+             data.total_vendas is number &&
+             data.tenant_id is string && isValidId(data.tenant_id) &&
+             data.criado_por == request.auth.uid;
+    }
+
+    function isValidNota(data) {
+      return data.numero_nota is string && data.numero_nota.size() <= 100 &&
+             data.rastreavel is bool &&
+             data.tenant_id is string && isValidId(data.tenant_id);
     }
 
     // --- COLLECTION RULES ---
+
+    // Caixas
+    match /caixas/{caixaId} {
+      allow read: if belongsToTenant(resource.data.tenant_id);
+      allow create: if belongsToTenant(incoming().tenant_id) && isValidCaixa(incoming());
+      allow update: if belongsToTenant(incoming().tenant_id) && isValidCaixa(incoming()) && (
+        (existing().status == 'ABERTO' && incoming().status == 'FECHADO') ||
+        (isSuperAdmin() && incoming().status == 'VALIDADO')
+      );
+    }
+
+    // Notas Fiscais
+    match /notas_fiscais/{notaId} {
+      allow read: if belongsToTenant(resource.data.tenant_id);
+      allow write: if isSuperAdmin() && isValidNota(incoming());
+    }
 
     // Users
     match /users/{userId} {
