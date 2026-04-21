@@ -60,8 +60,13 @@ export default function ZeusApp() {
     setLoading(true);
     try {
       const fetchSnap = async (coll: string) => {
-        const snap = await getDocs(collection(db, coll));
-        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        try {
+          const snap = await getDocs(collection(db, coll));
+          return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (e: any) {
+          console.warn(`Error fetching ${coll}:`, e.message);
+          return []; // Return empty array if permission denied for one collection
+        }
       };
 
       const [tenants, products, stock, movements, transactions] = await Promise.all([
@@ -81,8 +86,11 @@ export default function ZeusApp() {
         users: []
       });
     } catch (err: any) {
-      console.warn('Silent Fetch Error (likely permission restriction):', err.message);
-      // Empty state handled by check in render
+      console.error('Critical Fetch Error:', err.message);
+      // Fallback to empty non-null data to avoid the error screen if possible
+      setData({
+        tenants: [], products: [], stock: [], movements: [], transactions: [], users: []
+      });
     } finally {
       setLoading(false);
     }
@@ -243,13 +251,21 @@ export default function ZeusApp() {
         <div className="flex flex-col items-center gap-4 text-center p-6">
           <AlertTriangle className="text-amber-500" size={48} />
           <div>
-            <h2 className="text-xl font-black text-slate-900">ERRO DE PERMISSÃO</h2>
+            <h2 className="text-xl font-black text-slate-900">ESTADO INCIAL OU PERMISSÃO</h2>
             <p className="text-slate-500 text-sm mt-1">
-              Seu perfil de usuário ainda não foi autorizado.<br/> 
-              Contate o administrador em: <strong>baraodaserra@hotmail.com</strong>
+              Seu perfil foi registrado, mas os dados ainda estão sendo carregados ou o acesso está restrito.<br/> 
+              Contate: <strong>baraodaserra@hotmail.com</strong>
             </p>
           </div>
-          <button onClick={handleLogout} className="mt-4 text-blue-600 font-bold hover:underline">Sair e tentar novamente</button>
+          <div className="flex flex-col gap-2 w-full max-w-xs">
+            <button 
+              onClick={fetchData} 
+              className="bg-blue-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+            >
+              Recarregar Dashboard
+            </button>
+            <button onClick={handleLogout} className="text-slate-500 font-bold hover:underline text-sm p-2">Sair do Sistema</button>
+          </div>
         </div>
       </div>
     );
