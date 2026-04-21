@@ -20,7 +20,8 @@ import {
   CheckCircle2,
   ScanLine,
   Truck,
-  Trash2
+  Trash2,
+  ShoppingCart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
@@ -641,6 +642,7 @@ export default function ZeusApp() {
                   data={data} 
                   selectedTenantId={selectedTenantId} 
                   handleAction={handleAction} 
+                  userProfile={userProfile}
                 />
               )}
 
@@ -716,7 +718,7 @@ function KPICard({ label, value, valueColor = 'text-slate-900', info }: { label:
 }
 
 // Modular Views
-function InventoryManagement({ data, selectedTenantId, handleAction }: { data: any, selectedTenantId: string, handleAction: any }) {
+function InventoryManagement({ data, selectedTenantId, handleAction, userProfile }: { data: any, selectedTenantId: string, handleAction: any, userProfile: any }) {
   const [modalOpen, setModalOpen] = useState<'entrada' | 'saida' | 'transferencia' | 'produto' | 'apontamento' | null>(null);
   const [view, setView] = useState<'geral' | 'curva' | 'min_estoque'>('geral');
   const [form, setForm] = useState({ 
@@ -829,9 +831,11 @@ function InventoryManagement({ data, selectedTenantId, handleAction }: { data: a
         <button onClick={() => { setModalOpen('apontamento'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-secondary flex items-center gap-2 text-violet-600 border-violet-100">
           <ScanLine size={16} /> Apontamento
         </button>
-        <button onClick={() => { setModalOpen('transferencia'); setForm((f: any) => ({ ...f, tenant_origem: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-primary flex items-center gap-2">
-          <ArrowRightLeft size={16} /> Transferência
-        </button>
+        {userProfile?.role === 'SUPER_ADMIN' && (
+          <button onClick={() => { setModalOpen('transferencia'); setForm((f: any) => ({ ...f, tenant_origem: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-primary flex items-center gap-2">
+            <ArrowRightLeft size={16} /> Transferência
+          </button>
+        )}
       </div>
 
       {view === 'geral' && (
@@ -1359,12 +1363,17 @@ function TenantsManagement({ tenants, onManage }: { tenants: Tenant[], onManage:
 
 
 function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: any, userProfile: any, selectedTenantId: string, onAction: any }) {
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState<'fechar' | 'venda' | null>(null);
   const [cashierForm, setCashierForm] = useState({ 
     total_pix: 0, 
     total_cartao: 0, 
     total_dinheiro: 0,
     tenant_id: userProfile?.tenant_id || '' 
+  });
+  const [vendaForm, setVendaForm] = useState({
+    produto_id: '',
+    quantidade: 1,
+    forma_pagamento: 'PIX' as 'PIX' | 'CARTAO' | 'DINHEIRO'
   });
 
   const isSuper = userProfile?.role === 'SUPER_ADMIN';
@@ -1382,7 +1391,72 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
         criado_por: auth.currentUser?.uid,
         updated_at: new Date().toISOString()
       });
-      setModalOpen(false);
+      setModalOpen(null);
+      onAction();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const handleRegistrarVenda = async () => {
+    try {
+      if (!vendaForm.produto_id || vendaForm.quantidade <= 0) return;
+      if (!currentTenantId || currentTenantId === 'all') {
+        alert("Selecione uma loja específica para registrar vendas.");
+        return;
+      }
+
+      const product = data.products.find((p: any) => p.id === vendaForm.produto_id);
+      if (!product) return;
+
+      const valorTotal = product.preco * vendaForm.quantidade;
+      const criado_por = auth.currentUser?.uid;
+      const now = new Date().toISOString();
+
+      await runTransaction(db, async (transaction) => {
+        // Read Stock
+        const stockRef = doc(db, 'estoque', `${vendaForm.produto_id}_${currentTenantId}`);
+        const stockDoc = await transaction.get(stockRef);
+        const currentQty = stockDoc.exists() ? stockDoc.data().quantidade : 0;
+
+        if (currentQty < vendaForm.quantidade) {
+          throw new Error("Estoque insuficiente para esta venda.");
+        }
+
+        // Deduct Stock
+        transaction.update(stockRef, {
+          quantidade: currentQty - vendaForm.quantidade,
+          updated_at: now
+        });
+
+        // Log Movement
+        const movRef = doc(collection(db, 'movimentacoes'));
+        transaction.set(movRef, {
+          tipo: 'SAIDA',
+          produto_id: vendaForm.produto_id,
+          quantidade: vendaForm.quantidade,
+          tenant_origem: currentTenantId,
+          tenant_destino: null,
+          criado_por,
+          created_at: now
+        });
+
+        // Log Transaction (Receita)
+        const transRef = doc(collection(db, 'transacoes'));
+        transaction.set(transRef, {
+          tipo: 'RECEITA',
+          valor: valorTotal,
+          tenant_id: currentTenantId,
+          descricao: `Venda: ${product.nome} (x${vendaForm.quantidade})`,
+          categoria: 'Venda de Mercadoria',
+          forma_pagamento: vendaForm.forma_pagamento,
+          criado_por,
+          created_at: now
+        });
+      });
+
+      setModalOpen(null);
+      setVendaForm({ produto_id: '', quantidade: 1, forma_pagamento: 'PIX' });
       onAction();
     } catch (e: any) {
       alert(e.message);
@@ -1404,16 +1478,21 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Módulo Caixa</h2>
-          <p className="text-slate-500 text-sm font-medium italic">Gestão de fechamento diário e conferência de valores.</p>
+          <p className="text-slate-500 text-sm font-medium italic">Gestão de vendas, PDV e fechamento diário.</p>
         </div>
-        {!isSuper && (
-          <button onClick={() => setModalOpen(true)} className="btn-primary flex items-center gap-2">
-            <Plus size={16} /> Fechar Caixa Hoje
+        <div className="flex gap-2">
+          <button onClick={() => setModalOpen('venda')} className="btn-secondary flex items-center gap-2 border-green-200 text-green-700 hover:bg-green-50">
+            <ShoppingCart size={16} /> Registrar Venda
           </button>
-        )}
+          {!isSuper && (
+            <button onClick={() => setModalOpen('fechar')} className="btn-primary flex items-center gap-2">
+              <Plus size={16} /> Fechar Caixa Hoje
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4">
@@ -1454,7 +1533,7 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
         ))}
       </div>
 
-      {modalOpen && (
+      {modalOpen === 'fechar' && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic">Fechamento de Caixa Diário</h3>
@@ -1475,8 +1554,51 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
               </div>
             </div>
             <div className="flex gap-2 mt-8">
-              <button onClick={() => setModalOpen(false)} className="flex-1 btn-secondary text-sm font-bold">Cancelar</button>
+              <button onClick={() => setModalOpen(null)} className="flex-1 btn-secondary text-sm font-bold">Cancelar</button>
               <button onClick={handleSubmitCaixa} className="flex-1 btn-primary text-sm font-bold">Enviar para Conferência</button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {modalOpen === 'venda' && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic">Registrar Venda (PDV)</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Produto (Estoque)</label>
+                <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm" value={vendaForm.produto_id} onChange={e => setVendaForm({ ...vendaForm, produto_id: e.target.value })}>
+                  <option value="">Selecione...</option>
+                  {data.products.map((p: any) => {
+                    const maxQty = data.stock.find((s: any) => s.produto_id === p.id && s.tenant_id === currentTenantId)?.quantidade || 0;
+                    return (
+                      <option key={p.id} value={p.id} disabled={maxQty <= 0}>
+                        {p.nome} (Qtd: {maxQty}) - R$ {p.preco.toLocaleString('pt-br', { minimumFractionDigits: 2 })}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Quantidade</label>
+                  <input type="number" min="1" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm" value={vendaForm.quantidade} onChange={e => setVendaForm({...vendaForm, quantidade: Number(e.target.value)})} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Pagamento</label>
+                  <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm" value={vendaForm.forma_pagamento} onChange={e => setVendaForm({...vendaForm, forma_pagamento: e.target.value as any})}>
+                    <option value="PIX">PIX</option>
+                    <option value="CARTAO">Cartão</option>
+                    <option value="DINHEIRO">Dinheiro</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-8">
+              <button onClick={() => setModalOpen(null)} className="flex-1 btn-secondary text-sm font-bold">Cancelar</button>
+              <button onClick={handleRegistrarVenda} className="flex-1 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold transition-all" disabled={!vendaForm.produto_id || vendaForm.quantidade < 1}>Registrar Venda</button>
             </div>
           </motion.div>
         </div>
