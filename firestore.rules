@@ -75,7 +75,9 @@ service cloud.firestore {
       return data.nome is string && data.nome.size() <= 100 &&
              data.categoria is string && data.categoria.size() <= 50 &&
              data.preco is number && data.preco >= 0 &&
-             data.ativo is bool;
+             data.estoque_minimo is number && data.estoque_minimo >= 0 &&
+             data.ativo is bool &&
+             (!('codigo' in data) || (data.codigo is string && data.codigo.size() <= 50));
     }
 
     function isValidStock(data) {

@@ -20,9 +20,11 @@ export interface Tenant {
 
 export interface Produto {
   id: string;
+  codigo?: string;
   nome: string;
   categoria: string;
   preco: number;
+  estoque_minimo: number;
   ativo: boolean;
   created_at: string;
 }

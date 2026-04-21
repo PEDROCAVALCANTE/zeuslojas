@@ -30,13 +30,15 @@
       "description": "Catálogo global de produtos",
       "type": "object",
       "properties": {
+        "codigo": { "type": "string" },
         "nome": { "type": "string" },
         "categoria": { "type": "string" },
         "preco": { "type": "number" },
+        "estoque_minimo": { "type": "number" },
         "ativo": { "type": "boolean" },
         "created_at": { "type": "string", "format": "date-time" }
       },
-      "required": ["nome", "categoria", "preco", "ativo"]
+      "required": ["nome", "categoria", "preco", "ativo", "estoque_minimo"]
     },
     "Estoque": {
       "title": "Estoque",

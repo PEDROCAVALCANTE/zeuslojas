@@ -300,12 +300,11 @@ export default function ZeusApp() {
     .filter(t => t.tipo === 'DESPESA')
     .reduce((acc, t) => acc + (t.valor || 0), 0);
 
-  const lowStockThreshold = 10;
   const productsLowStock = data.products.filter(p => {
     const totalQty = data.stock
       .filter(s => s.produto_id === p.id && (selectedTenantId === 'all' || s.tenant_id === selectedTenantId))
       .reduce((acc, s) => acc + s.quantidade, 0);
-    return totalQty < lowStockThreshold;
+    return totalQty < (p.estoque_minimo || 10);
   });
 
   const getProductName = (id: string) => data.products.find(p => p.id === id)?.nome || 'Produto Desconhecido';
@@ -631,8 +630,24 @@ function KPICard({ label, value, valueColor = 'text-slate-900', info }: { label:
 
 // Modular Views
 function InventoryManagement({ data, selectedTenantId, handleAction }: { data: any, selectedTenantId: string, handleAction: any }) {
-  const [modalOpen, setModalOpen] = useState<'entrada' | 'saida' | 'transferencia' | null>(null);
-  const [form, setForm] = useState({ produto_id: '', tenant_id: '', tenant_origem: '', tenant_destino: '', quantidade: 0 });
+  const [modalOpen, setModalOpen] = useState<'entrada' | 'saida' | 'transferencia' | 'produto' | 'apontamento' | null>(null);
+  const [view, setView] = useState<'geral' | 'curva' | 'min_estoque'>('geral');
+  const [form, setForm] = useState({ 
+    produto_id: '', 
+    tenant_id: '', 
+    tenant_origem: '', 
+    tenant_destino: '', 
+    quantidade: 0,
+    // For Pointing (Baixa e Apontamento)
+    produto_origem_id: '',
+    produto_destino_id: '',
+    // For Product Registration
+    codigo: '',
+    nome: '',
+    categoria: '',
+    preco: 0,
+    estoque_minimo: 0
+  });
 
   const getStockQty = (prodId: string, tId: string) => {
     return data.stock.find((s: any) => s.produto_id === prodId && s.tenant_id === tId)?.quantidade || 0;
@@ -644,142 +659,344 @@ function InventoryManagement({ data, selectedTenantId, handleAction }: { data: a
 
   const submit = async () => {
     if (!modalOpen) return;
-    const endpoint = `estoque/${modalOpen}`;
-    await handleAction(endpoint, form);
-    setModalOpen(null);
-    setForm({ produto_id: '', tenant_id: '', tenant_origem: '', tenant_destino: '', quantidade: 0 });
+    try {
+      if (modalOpen === 'produto') {
+        const newProd = {
+          codigo: form.codigo,
+          nome: form.nome,
+          categoria: form.categoria,
+          preco: form.preco,
+          estoque_minimo: form.estoque_minimo,
+          ativo: true,
+          created_at: new Date().toISOString()
+        };
+        await addDoc(collection(db, 'produtos'), newProd);
+      } else if (modalOpen === 'apontamento') {
+        // Baixa in Origem
+        await handleAction('estoque/saida', {
+          produto_id: form.produto_origem_id,
+          tenant_id: selectedTenantId === 'all' ? form.tenant_id : selectedTenantId,
+          quantidade: form.quantidade
+        });
+        // Entrada in Destino
+        await handleAction('estoque/entrada', {
+          produto_id: form.produto_destino_id,
+          tenant_id: selectedTenantId === 'all' ? form.tenant_id : selectedTenantId,
+          quantidade: form.quantidade
+        });
+      } else {
+        const endpoint = `estoque/${modalOpen}`;
+        await handleAction(endpoint, form);
+      }
+      setModalOpen(null);
+      setForm({ 
+        produto_id: '', tenant_id: '', tenant_origem: '', tenant_destino: '', quantidade: 0,
+        produto_origem_id: '', produto_destino_id: '', codigo: '', nome: '', categoria: '', preco: 0, estoque_minimo: 0
+      });
+      window.location.reload(); 
+    } catch (e: any) {
+      alert(`Erro: ${e.message}`);
+    }
   };
+
+  const curvaVendas = data.products.map((p: any) => {
+    const totalSaidas = data.movements
+      .filter((m: any) => m.produto_id === p.id && m.tipo === 'SAIDA')
+      .reduce((acc: number, m: any) => acc + m.quantidade, 0);
+    return { ...p, totalVendas: totalSaidas };
+  }).sort((a: any, b: any) => b.totalVendas - a.totalVendas);
+
+  const minEstoque = data.products.map((p: any) => {
+    const qty = selectedTenantId === 'all' ? getGlobalStock(p.id) : getStockQty(p.id, selectedTenantId);
+    return { ...p, qty };
+  }).sort((a: any, b: any) => b.qty - a.qty); 
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Estoque Consolidado</h2>
-          <p className="text-slate-500 text-sm font-medium">Gerenciamento de produtos e movimentações entre unidades.</p>
+          <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Gestão de Estoque</h2>
+          <p className="text-slate-500 text-sm font-medium">Controle avançado, baixas, apontamentos e reposição.</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => { setModalOpen('entrada'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-secondary flex items-center gap-2">
-            <Plus size={16} /> Entrada
-          </button>
-          <button onClick={() => { setModalOpen('saida'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-secondary flex items-center gap-2">
-            <AlertTriangle size={16} className="text-amber-500" /> Saída
-          </button>
-          <button onClick={() => { setModalOpen('transferencia'); setForm((f: any) => ({ ...f, tenant_origem: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-primary flex items-center gap-2">
-            <ArrowRightLeft size={16} /> Transferência
-          </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setView('geral')} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all ${view === 'geral' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}`}>Geral</button>
+          <button onClick={() => setView('curva')} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all ${view === 'curva' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}`}>Curva Vendas</button>
+          <button onClick={() => setView('min_estoque')} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all ${view === 'min_estoque' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}`}>Estoque Mínimo</button>
         </div>
       </div>
 
-      <div className="kpi-card !p-0 overflow-hidden shadow-md border-slate-200">
-        <table className="data-table">
-          <thead className="bg-slate-50">
-            <tr>
-              <th>ID</th>
-              <th>Produto</th>
-              <th>Categoria</th>
-              <th>Preço</th>
-              <th className="text-center">{selectedTenantId === 'all' ? 'Estoque Global' : 'Estoque Unidade'}</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.products.map((p: Produto) => {
-              const qty = selectedTenantId === 'all' ? getGlobalStock(p.id) : getStockQty(p.id, selectedTenantId);
-              return (
-                <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="font-mono text-xs text-slate-400">#{p.id}</td>
+      <div className="flex flex-wrap gap-3 p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+        <button onClick={() => setModalOpen('produto')} className="btn-secondary flex items-center gap-2 border-emerald-100 text-emerald-700 hover:bg-emerald-50">
+          <Plus size={16} /> Cadastrar Produto
+        </button>
+        <div className="w-px h-8 bg-slate-100 mx-2 hidden md:block"></div>
+        <button onClick={() => { setModalOpen('entrada'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-secondary flex items-center gap-2">
+          <Plus size={16} /> Entrada
+        </button>
+        <button onClick={() => { setModalOpen('saida'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-secondary flex items-center gap-2">
+          <AlertTriangle size={16} className="text-amber-500" /> Baixa
+        </button>
+        <button onClick={() => { setModalOpen('apontamento'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-secondary flex items-center gap-2 text-violet-600 border-violet-100">
+          <ScanLine size={16} /> Apontamento
+        </button>
+        <button onClick={() => { setModalOpen('transferencia'); setForm((f: any) => ({ ...f, tenant_origem: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-primary flex items-center gap-2">
+          <ArrowRightLeft size={16} /> Transferência
+        </button>
+      </div>
+
+      {view === 'geral' && (
+        <div className="kpi-card !p-0 overflow-hidden shadow-md border-slate-200">
+          <table className="data-table">
+            <thead className="bg-slate-50">
+              <tr>
+                <th>Código</th>
+                <th>Produto</th>
+                <th>Categoria</th>
+                <th>Preço</th>
+                <th className="text-center">{selectedTenantId === 'all' ? 'Estoque Global' : 'Estoque Unidade'}</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.products.map((p: Produto) => {
+                const qty = selectedTenantId === 'all' ? getGlobalStock(p.id) : getStockQty(p.id, selectedTenantId);
+                const isCrit = qty < p.estoque_minimo;
+                return (
+                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="font-mono text-xs text-slate-400">{p.codigo || `#${p.id.slice(0,6)}`}</td>
+                    <td className="font-bold text-slate-800">{p.nome}</td>
+                    <td><span className="text-[10px] bg-slate-100 px-2 py-1 rounded font-bold text-slate-500 uppercase">{p.categoria}</span></td>
+                    <td className="font-mono font-bold text-blue-600">R$ {p.preco.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</td>
+                    <td className="text-center">
+                      <span className={`text-lg font-black ${isCrit ? 'text-red-500' : 'text-slate-700'}`}>{qty}</span>
+                    </td>
+                    <td>
+                      {isCrit ? (
+                        <span className="tag tag-warning flex items-center gap-1 w-fit"><AlertTriangle size={10} /> Abaixo do Mínimo</span>
+                      ) : (
+                        <span className="tag tag-success w-fit">Disponível</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {view === 'curva' && (
+        <div className="kpi-card !p-0 overflow-hidden shadow-md border-slate-200">
+          <table className="data-table">
+            <thead className="bg-slate-50">
+              <tr>
+                <th>Posição</th>
+                <th>Produto</th>
+                <th>Categoria</th>
+                <th className="text-center">Vendas Totais</th>
+                <th>Faturamento Estimado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {curvaVendas.map((p: any, idx: number) => (
+                <tr key={p.id}>
+                  <td className="font-black text-slate-400 italic">#{idx + 1}</td>
                   <td className="font-bold text-slate-800">{p.nome}</td>
-                  <td><span className="text-[10px] bg-slate-100 px-2 py-1 rounded font-bold text-slate-500 uppercase">{p.categoria}</span></td>
-                  <td className="font-mono font-bold text-blue-600">R$ {p.preco.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</td>
-                  <td className="text-center">
-                    <span className={`text-lg font-black ${qty < 10 ? 'text-red-500' : 'text-slate-700'}`}>{qty}</span>
-                  </td>
-                  <td>
-                    {qty < 10 ? (
-                      <span className="tag tag-warning flex items-center gap-1 w-fit"><AlertTriangle size={10} /> Reposição Limite</span>
-                    ) : (
-                      <span className="tag tag-success w-fit">Disponível</span>
-                    )}
-                  </td>
+                  <td><span className="text-[10px] bg-slate-100 px-2 py-1 rounded font-bold text-slate-400 uppercase">{p.categoria}</span></td>
+                  <td className="text-center font-black text-blue-600">{p.totalVendas}</td>
+                  <td className="font-mono text-xs text-slate-500">R$ {(p.totalVendas * p.preco).toLocaleString('pt-br', { minimumFractionDigits: 2 })}</td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-      {/* Basic Modal Simulation */}
+      {view === 'min_estoque' && (
+        <div className="kpi-card !p-0 overflow-hidden shadow-md border-slate-200">
+          <table className="data-table">
+            <thead className="bg-slate-50">
+              <tr>
+                <th>Código</th>
+                <th>Descrição</th>
+                <th className="text-center">Estoque Atual</th>
+                <th className="text-center">Estoque Mínimo</th>
+                <th>Situação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {minEstoque.map((p: any) => {
+                const isCrit = p.qty < p.estoque_minimo;
+                const diff = p.estoque_minimo - p.qty;
+                return (
+                  <tr key={p.id} className={isCrit ? 'bg-red-50/50' : ''}>
+                    <td className="font-mono text-xs text-slate-400">{p.codigo || `#${p.id.slice(0,6)}`}</td>
+                    <td className="font-bold text-slate-800">{p.nome}</td>
+                    <td className={`text-center font-black ${isCrit ? 'text-red-600' : 'text-slate-700'}`}>{p.qty}</td>
+                    <td className="text-center font-bold text-blue-900">{p.estoque_minimo}</td>
+                    <td>
+                       {isCrit ? (
+                         <div className="flex flex-col gap-0.5">
+                            <span className="tag tag-warning w-fit">Crítico</span>
+                            <span className="text-[9px] font-black text-red-500 uppercase">Faltam {diff} unidades</span>
+                         </div>
+                       ) : (
+                         <span className="tag tag-success w-fit">Seguro</span>
+                       )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {modalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-slate-200"
+            className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-slate-200 max-h-[90vh] overflow-y-auto"
           >
-            <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic">
-              {modalOpen === 'entrada' ? 'Registrar Entrada' : modalOpen === 'saida' ? 'Registrar Baixa' : 'Transferência entre Lojas'}
+            <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic border-b pb-4">
+              {modalOpen === 'entrada' ? 'Registrar Entrada' : 
+               modalOpen === 'saida' ? 'Registrar Baixa' : 
+               modalOpen === 'transferencia' ? 'Transferência entre Lojas' :
+               modalOpen === 'produto' ? 'Cadastrar Novo Produto' : 'Baixa e Apontamento'}
             </h3>
             
             <div className="space-y-4">
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Produto</label>
-                <select 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  onChange={(e) => setForm({ ...form, produto_id: e.target.value })}
-                >
-                  <option value="">Selecione...</option>
-                  {data.products.map((p: any) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                </select>
-              </div>
-
-              {modalOpen !== 'transferencia' ? (
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Unidade</label>
-                  <select 
-                    disabled={selectedTenantId !== 'all'}
-                    value={form.tenant_id}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
-                    onChange={(e) => setForm({ ...form, tenant_id: e.target.value })}
-                  >
-                    <option value="">Selecione...</option>
-                    {data.tenants.map((t: any) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                  </select>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-4">
+              {modalOpen === 'produto' ? (
+                <>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Origem</label>
-                    <select 
-                      disabled={selectedTenantId !== 'all'}
-                      value={form.tenant_origem}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
-                      onChange={(e) => setForm({ ...form, tenant_origem: e.target.value })}
-                    >
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Código Interno</label>
+                    <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" value={form.codigo} onChange={e => setForm({...form, codigo: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Nome do Produto</label>
+                    <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Categoria</label>
+                    <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" value={form.categoria} onChange={e => setForm({...form, categoria: e.target.value})} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Preço de Venda</label>
+                      <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" value={form.preco} onChange={e => setForm({...form, preco: Number(e.target.value)})} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Estoque Mínimo</label>
+                      <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" value={form.estoque_minimo} onChange={e => setForm({...form, estoque_minimo: Number(e.target.value)})} />
+                    </div>
+                  </div>
+                </>
+              ) : modalOpen === 'apontamento' ? (
+                <>
+                   <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Produto Origem (Fardo/Saco)</label>
+                    <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" onChange={e => setForm({...form, produto_origem_id: e.target.value})}>
                       <option value="">Selecione...</option>
-                      {data.tenants.map((t: any) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                      {data.products.map((p: any) => (
+                        <option key={p.id} value={p.id}>
+                          {p.codigo ? `[${p.codigo}] ` : ''}{p.nome}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Destino</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Produto Destino (Granel/Lotes)</label>
+                    <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" onChange={e => setForm({...form, produto_destino_id: e.target.value})}>
+                      <option value="">Selecione...</option>
+                      {data.products.map((p: any) => (
+                        <option key={p.id} value={p.id}>
+                          {p.codigo ? `[${p.codigo}] ` : ''}{p.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Quantidade de Conversão</label>
+                    <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" value={form.quantidade} onChange={e => setForm({...form, quantidade: Number(e.target.value)})} />
+                  </div>
+                  {selectedTenantId === 'all' && (
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Loja da Operação</label>
+                      <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" onChange={e => setForm({...form, tenant_id: e.target.value})}>
+                        <option value="">Selecione...</option>
+                        {data.tenants.map((t: any) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Produto</label>
                     <select 
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                      onChange={(e) => setForm({ ...form, tenant_destino: e.target.value })}
+                      onChange={(e) => setForm({ ...form, produto_id: e.target.value })}
                     >
                       <option value="">Selecione...</option>
-                      {data.tenants.map((t: any) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                      {data.products.map((p: any) => (
+                        <option key={p.id} value={p.id}>
+                          {p.codigo ? `[${p.codigo}] ` : ''}{p.nome}
+                        </option>
+                      ))}
                     </select>
                   </div>
-                </div>
-              )}
 
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Quantidade</label>
-                <input 
-                  type="number" 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  onChange={(e) => setForm({ ...form, quantidade: Number(e.target.value) })}
-                />
-              </div>
+                  {modalOpen !== 'transferencia' ? (
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Unidade</label>
+                      <select 
+                        disabled={selectedTenantId !== 'all'}
+                        value={form.tenant_id}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                        onChange={(e) => setForm({ ...form, tenant_id: e.target.value })}
+                      >
+                        <option value="">Selecione...</option>
+                        {data.tenants.map((t: any) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Origem</label>
+                        <select 
+                          disabled={selectedTenantId !== 'all'}
+                          value={form.tenant_origem}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                          onChange={(e) => setForm({ ...form, tenant_origem: e.target.value })}
+                        >
+                          <option value="">Selecione...</option>
+                          {data.tenants.map((t: any) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Destino</label>
+                        <select 
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          onChange={(e) => setForm({ ...form, tenant_destino: e.target.value })}
+                        >
+                          <option value="">Selecione...</option>
+                          {data.tenants.map((t: any) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Quantidade</label>
+                    <input 
+                      type="number" 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      onChange={(e) => setForm({ ...form, quantidade: Number(e.target.value) })}
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex gap-2 mt-8">
@@ -787,7 +1004,7 @@ function InventoryManagement({ data, selectedTenantId, handleAction }: { data: a
               <button 
                 onClick={submit} 
                 className="flex-1 btn-primary"
-                disabled={form.quantidade <= 0 || !form.produto_id}
+                disabled={modalOpen !== 'produto' && form.quantidade <= 0 && modalOpen !== 'apontamento'}
               >
                 Confirmar
               </button>
