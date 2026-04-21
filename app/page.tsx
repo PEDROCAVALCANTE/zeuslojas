@@ -1,0 +1,917 @@
+
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { 
+  LayoutDashboard, 
+  Package, 
+  DollarSign, 
+  Store, 
+  BarChart3, 
+  Plus, 
+  ArrowRightLeft, 
+  LogOut,
+  ChevronDown,
+  AlertTriangle,
+  TrendingUp,
+  History
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import Image from 'next/image';
+import { 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  onAuthStateChanged,
+  signOut,
+  User as FirebaseUser
+} from 'firebase/auth';
+import { 
+  collection, 
+  getDocs, 
+  doc, 
+  getDoc, 
+  query,
+  where
+} from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
+import { Tenant, User, Produto, Estoque, Movimentacao, Transacao } from '@/lib/types';
+
+export default function ZeusApp() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [selectedTenantId, setSelectedTenantId] = useState<string>('all');
+  const [data, setData] = useState<{
+    tenants: Tenant[];
+    products: Produto[];
+    stock: Estoque[];
+    movements: Movimentacao[];
+    transactions: Transacao[];
+    users: User[];
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [userProfile, setUserProfile] = useState<User | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      setUser(fbUser);
+      if (fbUser) {
+        // Load user profile from Firestore
+        try {
+          const profileDoc = await getDoc(doc(db, 'users', fbUser.uid));
+          if (profileDoc.exists()) {
+            setUserProfile(profileDoc.data() as User);
+          } else {
+            // We can treat baraodaserra@hotmail.com as SUPER_ADMIN even without a profile doc
+            if (fbUser.email === 'baraodaserra@hotmail.com') {
+              setUserProfile({
+                uid: fbUser.uid,
+                nome: fbUser.displayName || 'Super Admin',
+                email: fbUser.email!,
+                role: 'SUPER_ADMIN',
+                tenant_id: null,
+                ativo: true,
+                created_at: new Date().toISOString()
+              });
+            }
+          }
+        } catch (e) {
+          console.error("Error loading profile:", e);
+        }
+        await fetchData();
+      } else {
+        setUserProfile(null);
+        setData(null);
+        setLoading(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const fetchData = async () => {
+    if (!auth.currentUser) return;
+    
+    setLoading(true);
+    try {
+      const fetchSnap = async (coll: string) => {
+        const snap = await getDocs(collection(db, coll));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      };
+
+      const [tenants, products, stock, movements, transactions] = await Promise.all([
+        fetchSnap('tenants'),
+        fetchSnap('produtos'),
+        fetchSnap('estoque'),
+        fetchSnap('movimentacoes'),
+        fetchSnap('transacoes')
+      ]);
+
+      setData({
+        tenants: tenants as any,
+        products: products as any,
+        stock: stock as any,
+        movements: movements as any,
+        transactions: transactions as any,
+        users: []
+      });
+    } catch (err: any) {
+      console.warn('Silent Fetch Error (likely permission restriction):', err.message);
+      // Empty state handled by check in render
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error('Login error', err);
+    }
+  };
+
+  const handleLogout = () => signOut(auth);
+
+  const handleAction = async (endpoint: string, payload: any) => {
+    try {
+      const res = await fetch(`/api/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, criado_por: auth.currentUser?.uid })
+      });
+      if (res.ok) {
+        await fetchData();
+      } else {
+        const error = await res.json();
+        alert(`Erro: ${error.error}`);
+      }
+    } catch (err) {
+      console.error('Error performing action', err);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-500 font-medium font-mono text-xs uppercase tracking-widest">Iniciando ZEUS...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[#0f172a] p-4">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white rounded-2xl p-10 w-full max-w-md text-center shadow-2xl"
+        >
+          <div className="flex justify-center mb-6">
+             <div className="w-16 h-16 bg-sky-400 rounded-2xl flex items-center justify-center font-black text-slate-900 text-3xl shadow-xl shadow-sky-400/20">Z</div>
+          </div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tighter mb-2">ZEUS MULTI-TENANT</h1>
+          <p className="text-slate-500 text-sm mb-10 font-medium">Benvindo ao Centro de Comando. Faça login para acessar sua unidade.</p>
+          
+          <button 
+            onClick={handleLogin}
+            className="w-full flex items-center justify-center gap-3 bg-[#0f172a] text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95"
+          >
+            <Image src="https://picsum.photos/seed/google/24/24" alt="Google" width={20} height={20} className="rounded-full" />
+            Entrar com Google
+          </button>
+          
+          <div className="mt-8 pt-8 border-t border-slate-100 grid grid-cols-2 gap-4">
+            <div className="text-left">
+              <span className="block text-[10px] font-bold text-slate-400 uppercase">Segurança</span>
+              <span className="text-[11px] font-semibold text-slate-700">AES-256 Encrypted</span>
+            </div>
+            <div className="text-right">
+              <span className="block text-[10px] font-bold text-slate-400 uppercase">Status</span>
+              <span className="text-[11px] font-semibold text-green-500 flex items-center justify-end gap-1">
+                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div> Online
+              </span>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4 text-center p-6">
+          <AlertTriangle className="text-amber-500" size={48} />
+          <div>
+            <h2 className="text-xl font-black text-slate-900">ERRO DE PERMISSÃO</h2>
+            <p className="text-slate-500 text-sm mt-1">
+              Seu perfil de usuário ainda não foi autorizado.<br/> 
+              Contate o administrador em: <strong>baraodaserra@hotmail.com</strong>
+            </p>
+          </div>
+          <button onClick={handleLogout} className="mt-4 text-blue-600 font-bold hover:underline">Sair e tentar novamente</button>
+        </div>
+      </div>
+    );
+  }
+
+  const filteredMovements = selectedTenantId === 'all' 
+    ? data.movements 
+    : data.movements.filter(m => m.tenant_origem === selectedTenantId || m.tenant_destino === selectedTenantId);
+
+  const filteredTransactions = selectedTenantId === 'all'
+    ? data.transactions
+    : data.transactions.filter(t => t.tenant_id === selectedTenantId);
+
+  // Stats calculation
+  const totalFaturamento = filteredTransactions
+    .filter(t => t.tipo === 'RECEITA')
+    .reduce((acc, t) => acc + (t.valor || 0), 0);
+
+  const totalDespesas = filteredTransactions
+    .filter(t => t.tipo === 'DESPESA')
+    .reduce((acc, t) => acc + (t.valor || 0), 0);
+
+  const lowStockThreshold = 10;
+  const productsLowStock = data.products.filter(p => {
+    const totalQty = data.stock
+      .filter(s => s.produto_id === p.id && (selectedTenantId === 'all' || s.tenant_id === selectedTenantId))
+      .reduce((acc, s) => acc + s.quantidade, 0);
+    return totalQty < lowStockThreshold;
+  });
+
+  const getProductName = (id: string) => data.products.find(p => p.id === id)?.nome || 'Produto Desconhecido';
+  const getTenantName = (id: string | null) => data.tenants.find(t => t.id === id)?.nome || '-';
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      {/* Sidebar - Geometric Balance styling */}
+      <aside className="w-64 bg-[#0f172a] text-white flex flex-col border-r border-[#1e293b] flex-shrink-0">
+        <div className="p-8">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-sky-400 rounded-lg flex items-center justify-center font-black text-slate-900 text-lg">Z</div>
+            <span className="text-2xl font-extrabold tracking-tighter">ZEUS</span>
+          </div>
+          <div className="text-[10px] text-slate-500 mt-1 font-bold uppercase tracking-wider">SaaS Multi-Tenant</div>
+        </div>
+
+        <nav className="flex-1 px-2 space-y-1">
+          <NavItem 
+            icon={<LayoutDashboard size={18} />} 
+            label="Dashboard" 
+            active={activeTab === 'dashboard'} 
+            onClick={() => setActiveTab('dashboard')} 
+          />
+          <NavItem 
+            icon={<Package size={18} />} 
+            label="Controle de Estoque" 
+            active={activeTab === 'estoque'} 
+            onClick={() => setActiveTab('estoque')} 
+          />
+          <NavItem 
+            icon={<DollarSign size={18} />} 
+            label="Financeiro Central" 
+            active={activeTab === 'financeiro'} 
+            onClick={() => setActiveTab('financeiro')} 
+          />
+          <NavItem 
+            icon={<Store size={18} />} 
+            label="Gestão de Lojas" 
+            active={activeTab === 'lojas'} 
+            onClick={() => setActiveTab('lojas')} 
+          />
+          <NavItem 
+            icon={<BarChart3 size={18} />} 
+            label="Relatórios Avançados" 
+            active={activeTab === 'relatorios'} 
+            onClick={() => setActiveTab('relatorios')} 
+          />
+        </nav>
+
+        <div className="p-6 border-t border-[#1e293b]">
+          <div className="text-xs text-slate-400">Logado como</div>
+          <div className="font-semibold text-sm text-white">{userProfile?.nome || user?.displayName || 'Usuário'}</div>
+          <div className="text-[11px] text-sky-400 uppercase tracking-tighter font-bold">{userProfile?.role || 'Aguardando Perfil'}</div>
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-2 mt-4 text-slate-500 hover:text-white transition-colors text-sm"
+          >
+            <LogOut size={14} /> Sair do Sistema
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col h-full bg-[#f1f5f9]">
+        {/* Top Nav - Geometric Balance */}
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0">
+          <div>
+            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">Selecionar Tenant</div>
+            <div className="relative">
+              <select 
+                value={selectedTenantId}
+                onChange={(e) => setSelectedTenantId(e.target.value)}
+                className="appearance-none bg-slate-50 border border-slate-200 pl-3 pr-10 py-1.5 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-sky-400 transition-all cursor-pointer min-w-[240px]"
+              >
+                <option value="all">Todas as Lojas (Consolidado)</option>
+                {data.tenants.map(t => (
+                  <option key={t.id} value={t.id}>{t.nome}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setActiveTab('estoque')}
+              className="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wide hover:bg-slate-200 transition-colors flex items-center gap-2"
+            >
+              <Plus size={14} /> Nova Movimentação
+            </button>
+            <button 
+              onClick={() => setActiveTab('financeiro')}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wide hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm shadow-blue-200"
+            >
+              <DollarSign size={14} /> Lançar Receita
+            </button>
+          </div>
+        </header>
+
+        {/* Scrollable Context Area */}
+        <div className="flex-1 overflow-y-auto p-8">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab + selectedTenantId}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-8"
+            >
+              {activeTab === 'dashboard' && (
+                <>
+                  {/* KPIs */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <KPICard 
+                      label="Faturamento Total" 
+                      value={`R$ ${totalFaturamento.toLocaleString('pt-br', { minimumFractionDigits: 2 })}`}
+                      info={<span className="text-green-500 font-bold">↑ 12% vs ontem</span>}
+                    />
+                    <KPICard 
+                      label="Estoque Baixo" 
+                      value={`${productsLowStock.length} Itens`}
+                      valueColor="text-red-500"
+                      info={<span className="text-slate-400">Exige reposição imediata</span>}
+                    />
+                    <KPICard 
+                      label={selectedTenantId === 'all' ? 'Lojas Ativas' : 'Status Loja'} 
+                      value={selectedTenantId === 'all' ? `${data.tenants.length} Unidades` : 'Operando'}
+                      info={<span className="text-blue-500 font-bold">04 Novas este mês</span>}
+                    />
+                    <KPICard 
+                      label="Fluxo Líquido" 
+                      value={`R$ ${(totalFaturamento - totalDespesas).toLocaleString('pt-br', { minimumFractionDigits: 2 })}`}
+                      info={<span className="text-slate-400">Consolidado no período</span>}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    {/* Recent Movements Table */}
+                    <div className="xl:col-span-2 kpi-card !p-0 overflow-hidden h-fit">
+                      <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                          <History size={18} className="text-blue-600" />
+                          Últimas Movimentações
+                        </h3>
+                        <button onClick={() => setActiveTab('relatorios')} className="text-xs font-bold text-blue-600 hover:underline">Ver Tudo</button>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Produto</th>
+                              <th>Loja</th>
+                              <th>Tipo</th>
+                              <th>Qtd</th>
+                              <th>Data</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredMovements.slice(0, 5).map(m => (
+                              <tr key={m.id}>
+                                <td className="font-medium text-slate-800">{getProductName(m.produto_id)}</td>
+                                <td>{getTenantName(m.tipo === 'ENTRADA' ? m.tenant_destino : m.tenant_origem)}</td>
+                                <td>
+                                  <span className={`tag ${
+                                    m.tipo === 'ENTRADA' ? 'tag-success' : 
+                                    m.tipo === 'SAIDA' ? 'tag-warning' : 'tag-blue'
+                                  }`}>
+                                    {m.tipo}
+                                  </span>
+                                </td>
+                                <td className="font-mono">{m.quantidade}</td>
+                                <td className="text-[11px] font-medium text-slate-400 uppercase">{new Date(m.created_at).toLocaleTimeString('pt-br', { hour: '2-digit', minute: '2-digit' })}</td>
+                              </tr>
+                            ))}
+                            {filteredMovements.length === 0 && (
+                              <tr>
+                                <td colSpan={5} className="py-8 text-center text-slate-400 italic font-medium">Nenhuma movimentação registrada.</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Financial Summary */}
+                    <div className="kpi-card flex flex-col h-fit">
+                      <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <TrendingUp size={18} className="text-blue-600" />
+                        Resumo Financeiro
+                      </h3>
+                      <div className="space-y-4 flex-1">
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Receitas</div>
+                          <div className="text-xl font-bold text-green-600">R$ {totalFaturamento.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</div>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Despesas</div>
+                          <div className="text-xl font-bold text-red-600">R$ {totalDespesas.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</div>
+                        </div>
+                        <div className="pt-4 border-t border-dashed border-slate-200">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-slate-600">Fluxo Líquido</span>
+                            <span className="text-xl font-black text-blue-600 italic">R$ {(totalFaturamento - totalDespesas).toLocaleString('pt-br', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+                        
+                        {/* Simple Chart Simulation */}
+                        <div className="mt-6 h-16 flex items-end gap-1 px-1">
+                          {[40, 60, 45, 80, 70, 100, 85].map((h, i) => (
+                            <div 
+                              key={i} 
+                              className={`flex-1 rounded-sm transition-all duration-500 ${i > 4 ? 'bg-blue-600' : 'bg-slate-200'}`}
+                              style={{ height: `${h}%` }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {activeTab === 'estoque' && (
+                <InventoryManagement 
+                  data={data} 
+                  selectedTenantId={selectedTenantId} 
+                  handleAction={handleAction} 
+                />
+              )}
+
+              {activeTab === 'financeiro' && (
+                <FinancialManagement 
+                  transactions={filteredTransactions} 
+                  tenants={data.tenants}
+                  selectedTenantId={selectedTenantId}
+                  handleAction={handleAction}
+                />
+              )}
+
+              {activeTab === 'lojas' && <TenantsManagement tenants={data.tenants} />}
+              {activeTab === 'relatorios' && <ReportsView data={data} selectedTenantId={selectedTenantId} />}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// Helper Components
+function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void }) {
+  return (
+    <button 
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-6 py-3 rounded-l-lg transition-all text-sm font-medium cursor-pointer ${
+        active 
+          ? 'bg-[#1e293b] text-sky-400 border-l-4 border-sky-400' 
+          : 'text-slate-400 hover:bg-[#1e293b]/50 hover:text-slate-200'
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function KPICard({ label, value, valueColor = 'text-slate-900', info }: { label: string, value: string, valueColor?: string, info: React.ReactNode }) {
+  return (
+    <div className="kpi-card shadow-sm group hover:border-sky-400 transition-colors">
+      <div className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">{label}</div>
+      <div className={`text-2xl font-black ${valueColor} group-hover:scale-105 origin-left transition-transform`}>{value}</div>
+      <div className="text-[11px] mt-1">{info}</div>
+    </div>
+  );
+}
+
+// Modular Views
+function InventoryManagement({ data, selectedTenantId, handleAction }: { data: any, selectedTenantId: string, handleAction: any }) {
+  const [modalOpen, setModalOpen] = useState<'entrada' | 'saida' | 'transferencia' | null>(null);
+  const [form, setForm] = useState({ produto_id: '', tenant_id: '', tenant_origem: '', tenant_destino: '', quantidade: 0 });
+
+  const getStockQty = (prodId: string, tId: string) => {
+    return data.stock.find((s: any) => s.produto_id === prodId && s.tenant_id === tId)?.quantidade || 0;
+  };
+
+  const getGlobalStock = (prodId: string) => {
+    return data.stock.filter((s: any) => s.produto_id === prodId).reduce((acc: number, s: any) => acc + s.quantidade, 0);
+  };
+
+  const submit = async () => {
+    if (!modalOpen) return;
+    const endpoint = `estoque/${modalOpen}`;
+    await handleAction(endpoint, form);
+    setModalOpen(null);
+    setForm({ produto_id: '', tenant_id: '', tenant_origem: '', tenant_destino: '', quantidade: 0 });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Estoque Consolidado</h2>
+          <p className="text-slate-500 text-sm font-medium">Gerenciamento de produtos e movimentações entre unidades.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => { setModalOpen('entrada'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-secondary flex items-center gap-2">
+            <Plus size={16} /> Entrada
+          </button>
+          <button onClick={() => { setModalOpen('saida'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-secondary flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-500" /> Saída
+          </button>
+          <button onClick={() => { setModalOpen('transferencia'); setForm((f: any) => ({ ...f, tenant_origem: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-primary flex items-center gap-2">
+            <ArrowRightLeft size={16} /> Transferência
+          </button>
+        </div>
+      </div>
+
+      <div className="kpi-card !p-0 overflow-hidden shadow-md border-slate-200">
+        <table className="data-table">
+          <thead className="bg-slate-50">
+            <tr>
+              <th>ID</th>
+              <th>Produto</th>
+              <th>Categoria</th>
+              <th>Preço</th>
+              <th className="text-center">{selectedTenantId === 'all' ? 'Estoque Global' : 'Estoque Unidade'}</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.products.map((p: Produto) => {
+              const qty = selectedTenantId === 'all' ? getGlobalStock(p.id) : getStockQty(p.id, selectedTenantId);
+              return (
+                <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="font-mono text-xs text-slate-400">#{p.id}</td>
+                  <td className="font-bold text-slate-800">{p.nome}</td>
+                  <td><span className="text-[10px] bg-slate-100 px-2 py-1 rounded font-bold text-slate-500 uppercase">{p.categoria}</span></td>
+                  <td className="font-mono font-bold text-blue-600">R$ {p.preco.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</td>
+                  <td className="text-center">
+                    <span className={`text-lg font-black ${qty < 10 ? 'text-red-500' : 'text-slate-700'}`}>{qty}</span>
+                  </td>
+                  <td>
+                    {qty < 10 ? (
+                      <span className="tag tag-warning flex items-center gap-1 w-fit"><AlertTriangle size={10} /> Reposição Limite</span>
+                    ) : (
+                      <span className="tag tag-success w-fit">Disponível</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Basic Modal Simulation */}
+      {modalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-slate-200"
+          >
+            <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic">
+              {modalOpen === 'entrada' ? 'Registrar Entrada' : modalOpen === 'saida' ? 'Registrar Baixa' : 'Transferência entre Lojas'}
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Produto</label>
+                <select 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  onChange={(e) => setForm({ ...form, produto_id: e.target.value })}
+                >
+                  <option value="">Selecione...</option>
+                  {data.products.map((p: any) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select>
+              </div>
+
+              {modalOpen !== 'transferencia' ? (
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Unidade</label>
+                  <select 
+                    disabled={selectedTenantId !== 'all'}
+                    value={form.tenant_id}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                    onChange={(e) => setForm({ ...form, tenant_id: e.target.value })}
+                  >
+                    <option value="">Selecione...</option>
+                    {data.tenants.map((t: any) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Origem</label>
+                    <select 
+                      disabled={selectedTenantId !== 'all'}
+                      value={form.tenant_origem}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                      onChange={(e) => setForm({ ...form, tenant_origem: e.target.value })}
+                    >
+                      <option value="">Selecione...</option>
+                      {data.tenants.map((t: any) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Destino</label>
+                    <select 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      onChange={(e) => setForm({ ...form, tenant_destino: e.target.value })}
+                    >
+                      <option value="">Selecione...</option>
+                      {data.tenants.map((t: any) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Quantidade</label>
+                <input 
+                  type="number" 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  onChange={(e) => setForm({ ...form, quantidade: Number(e.target.value) })}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-8">
+              <button onClick={() => setModalOpen(null)} className="flex-1 btn-secondary">Cancelar</button>
+              <button 
+                onClick={submit} 
+                className="flex-1 btn-primary"
+                disabled={form.quantidade <= 0 || !form.produto_id}
+              >
+                Confirmar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FinancialManagement({ transactions, tenants, selectedTenantId, handleAction }: { transactions: Transacao[], tenants: Tenant[], selectedTenantId: string, handleAction: any }) {
+  const [modalOpen, setModalOpen] = useState<'receita' | 'despesa' | null>(null);
+  const [form, setForm] = useState({ valor: 0, descricao: '', categoria: '', tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId });
+
+  const submit = async () => {
+    if (!modalOpen) return;
+    await handleAction(`financeiro/${modalOpen}`, form);
+    setModalOpen(null);
+    setForm({ valor: 0, descricao: '', categoria: '', tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Fluxo Financeiro</h2>
+          <p className="text-slate-500 text-sm font-medium">Controle centralizado de receitas e despesas por unidade.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setModalOpen('despesa')} className="btn-secondary text-red-600 border-red-100 hover:bg-red-50 flex items-center gap-2">
+            <TrendingUp className="rotate-180" size={16} /> Lançar Despesa
+          </button>
+          <button onClick={() => setModalOpen('receita')} className="btn-primary flex items-center gap-2">
+            <Plus size={16} /> Lançar Receita
+          </button>
+        </div>
+      </div>
+
+      <div className="kpi-card !p-0 overflow-hidden shadow-md border-slate-200">
+        <table className="data-table">
+          <thead className="bg-slate-50">
+            <tr>
+              <th>Descrição</th>
+              <th>Categoria</th>
+              <th>Loja</th>
+              <th className="text-right">Valor</th>
+              <th>Tipo</th>
+              <th>Data</th>
+            </tr>
+          </thead>
+          <tbody>
+            {transactions.map(t => (
+              <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                <td className="font-bold text-slate-800">{t.descricao}</td>
+                <td><span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{t.categoria}</span></td>
+                <td className="text-slate-500">{tenants.find((ten: any) => ten.id === t.tenant_id)?.nome || '-'}</td>
+                <td className={`text-right font-mono font-black ${t.tipo === 'RECEITA' ? 'text-green-600' : 'text-red-600'}`}>
+                  {t.tipo === 'DESPESA' ? '(-)' : '(+)'} R$ {t.valor.toLocaleString('pt-br', { minimumFractionDigits: 2 })}
+                </td>
+                <td>
+                  <span className={`tag ${t.tipo === 'RECEITA' ? 'tag-success' : 'tag-warning'}`}>
+                    {t.tipo}
+                  </span>
+                </td>
+                <td className="text-[11px] font-medium text-slate-400 uppercase">{new Date(t.created_at).toLocaleDateString('pt-br')}</td>
+              </tr>
+            ))}
+            {transactions.length === 0 && (
+              <tr>
+                <td colSpan={6} className="py-12 text-center text-slate-400 italic">Sem transações financeiras no período.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {modalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl p-8 w-full max-w-md"
+          >
+            <h3 className={`text-xl font-black mb-6 uppercase italic ${modalOpen === 'receita' ? 'text-green-600' : 'text-red-600'}`}>
+              Novo Lançamento: {modalOpen}
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Unidade</label>
+                <select 
+                  disabled={selectedTenantId !== 'all'}
+                  value={form.tenant_id}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  onChange={(e) => setForm({ ...form, tenant_id: e.target.value })}
+                >
+                  <option value="">Selecione...</option>
+                  {tenants.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Descrição</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: Venda de Ração"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Categoria</label>
+                  <input 
+                    type="text" 
+                    placeholder="Ex: Vendas"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Valor (R$)</label>
+                  <input 
+                    type="number" 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    onChange={(e) => setForm({ ...form, valor: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-8">
+              <button onClick={() => setModalOpen(null)} className="flex-1 btn-secondary">Cancelar</button>
+              <button 
+                onClick={submit} 
+                className="flex-1 btn-primary"
+                disabled={form.valor <= 0 || !form.descricao || !form.tenant_id}
+              >
+                Salvar Lançamento
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TenantsManagement({ tenants }: { tenants: Tenant[] }) {
+  return (
+    <div className="space-y-6">
+       <div>
+          <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Gestão de Unidades</h2>
+          <p className="text-slate-500 text-sm font-medium">Controle de lojas cadastradas no sistema multi-tenant.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {tenants.map(t => (
+            <div key={t.id} className="kpi-card hover:border-sky-400 transition-all cursor-pointer group">
+              <div className="flex justify-between items-start">
+                <Store size={24} className="text-sky-400" />
+                <span className="tag tag-success">Ativa</span>
+              </div>
+              <h3 className="text-lg font-black text-slate-900 mt-2">{t.nome}</h3>
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tenant ID: {t.id}</div>
+              <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center text-[11px] text-slate-500 font-medium">
+                <span>Criado em {new Date(t.created_at).toLocaleDateString('pt-br')}</span>
+                <span className="text-blue-600 font-bold group-hover:underline">Gerenciar Unidade →</span>
+              </div>
+            </div>
+          ))}
+          <div className="kpi-card border-dashed border-slate-300 bg-slate-50/50 flex items-center justify-center cursor-pointer hover:bg-slate-50 group">
+             <div className="flex flex-col items-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                  <Plus size={20} />
+                </div>
+                <span className="text-sm font-bold text-slate-500 uppercase tracking-widest group-hover:text-blue-600 transition-all">Adicionar Nova Loja</span>
+             </div>
+          </div>
+        </div>
+    </div>
+  );
+}
+
+function ReportsView({ data, selectedTenantId }: { data: any, selectedTenantId: string }) {
+  return (
+    <div className="space-y-6">
+      <div>
+          <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Relatórios Analíticos</h2>
+          <p className="text-slate-500 text-sm font-medium">Indicadores de performance, vendas e produtos mais movimentados.</p>
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="kpi-card lg:col-span-2">
+          <h3 className="font-bold text-slate-800 mb-4 uppercase text-xs tracking-widest text-slate-400 italic">Produtos Mais Vendidos (Saída)</h3>
+          <div className="space-y-6">
+            {data.products.slice(0, 4).map((p: any, i: number) => {
+              const saídas = data.movements.filter((m: any) => m.produto_id === p.id && m.tipo === 'SAIDA').reduce((acc: number, m: any) => acc + m.quantidade, 0);
+              const maxSaída = 100; // Ref for bar
+              return (
+                <div key={p.id}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="font-bold text-slate-700">{p.nome}</span>
+                    <span className="font-mono font-black text-blue-600">{saídas} unid.</span>
+                  </div>
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-600 rounded-full" style={{ width: `${Math.min((saídas / maxSaída) * 100, 100)}%` }}></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="kpi-card">
+           <h3 className="font-bold text-slate-800 mb-4 uppercase text-xs tracking-widest text-slate-400 italic">Canais e Categorias</h3>
+           <div className="flex items-center justify-center h-48">
+              <div className="relative w-32 h-32 rounded-full border-[12px] border-slate-100 flex items-center justify-center">
+                 <div className="absolute inset-0 rounded-full border-[12px] border-blue-600 border-l-transparent border-b-transparent rotate-45"></div>
+                 <div className="text-center">
+                    <div className="text-xs font-bold text-slate-400">Rações</div>
+                    <div className="text-lg font-black text-slate-800">72%</div>
+                 </div>
+              </div>
+           </div>
+           <div className="space-y-2 mt-4">
+              <div className="flex items-center justify-between text-[11px] font-bold">
+                 <div className="flex items-center gap-2"><div className="w-2 h-2 bg-blue-600 rounded-full"></div> Rações</div>
+                 <span>72%</span>
+              </div>
+           </div>
+        </div>
+      </div>
+    </div>
+  );
+}

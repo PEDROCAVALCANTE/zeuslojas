@@ -1,0 +1,151 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- PRIMITIVES & HELPERS ---
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Lookup user profile from dedicated collection
+    function getProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Role-based helpers
+    // Bootstrapped Admin: baraodaserra@hotmail.com
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'baraodaserra@hotmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getProfile().role == 'SUPER_ADMIN')
+      );
+    }
+
+    function isAdminLoja() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getProfile().role == 'ADMIN_LOJA';
+    }
+
+    function getTenantId() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) ? getProfile().tenant_id : null;
+    }
+
+    // Multi-tenant isolation helper
+    function belongsToTenant(tId) {
+      return isSignedIn() && (isSuperAdmin() || getTenantId() == tId);
+    }
+
+    // --- VALIDATION BLUEPRINTS ---
+
+    function isValidUser(data) {
+      return data.nome is string && data.nome.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.role in ['SUPER_ADMIN', 'ADMIN_LOJA'] &&
+             data.ativo is bool;
+    }
+
+    function isValidTenant(data) {
+      return data.nome is string && data.nome.size() <= 100 &&
+             data.ativo is bool;
+    }
+
+    function isValidProduct(data) {
+      return data.nome is string && data.nome.size() <= 100 &&
+             data.categoria is string && data.categoria.size() <= 50 &&
+             data.preco is number && data.preco >= 0 &&
+             data.ativo is bool;
+    }
+
+    function isValidStock(data) {
+      return data.produto_id is string && isValidId(data.produto_id) &&
+             data.tenant_id is string && isValidId(data.tenant_id) &&
+             data.quantidade is number;
+    }
+
+    function isValidMovement(data) {
+      return data.tipo in ['ENTRADA', 'SAIDA', 'TRANSFERENCIA'] &&
+             data.produto_id is string && isValidId(data.produto_id) &&
+             data.quantidade is number && data.quantidade > 0 &&
+             data.criado_por == request.auth.uid;
+    }
+
+    function isValidTransaction(data) {
+      return data.tipo in ['RECEITA', 'DESPESA'] &&
+             data.valor is number && data.valor >= 0 &&
+             data.tenant_id is string && isValidId(data.tenant_id) &&
+             data.descricao is string && data.descricao.size() <= 200;
+    }
+
+    // --- COLLECTION RULES ---
+
+    // Users
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
+      allow list: if isSuperAdmin();
+      allow create: if isSignedIn() && isValidUser(incoming()) && (
+        // Prevent self-registration as SUPER_ADMIN
+        (incoming().role == 'ADMIN_LOJA' && request.auth.uid == userId) || 
+        isSuperAdmin()
+      );
+      allow update: if isSuperAdmin() && isValidUser(incoming());
+    }
+
+    // Tenants
+    match /tenants/{tenantId} {
+      allow get: if belongsToTenant(tenantId);
+      allow list: if isSuperAdmin() || (isSignedIn() && resource.data.id == getTenantId());
+      allow write: if isSuperAdmin() && isValidTenant(incoming());
+    }
+
+    // Products (Global Catalog)
+    match /produtos/{produtoId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin() && isValidProduct(incoming());
+    }
+
+    // Stock
+    match /estoque/{stockId} {
+      allow read: if belongsToTenant(resource.data.tenant_id);
+      allow write: if belongsToTenant(incoming().tenant_id) && isValidStock(incoming());
+    }
+
+    // Movements
+    match /movimentacoes/{movId} {
+      allow read: if (resource.data.tenant_origem != null && belongsToTenant(resource.data.tenant_origem)) || 
+                     (resource.data.tenant_destino != null && belongsToTenant(resource.data.tenant_destino));
+      allow create: if isValidMovement(incoming()) && (
+        (incoming().tipo == 'ENTRADA' && belongsToTenant(incoming().tenant_destino)) ||
+        (incoming().tipo == 'SAIDA' && belongsToTenant(incoming().tenant_origem)) ||
+        (incoming().tipo == 'TRANSFERENCIA' && belongsToTenant(incoming().tenant_origem) && belongsToTenant(incoming().tenant_destino))
+      );
+    }
+
+    // Transactions
+    match /transacoes/{txId} {
+      allow read: if belongsToTenant(resource.data.tenant_id);
+      allow create: if belongsToTenant(incoming().tenant_id) && isValidTransaction(incoming());
+    }
+  }
+}

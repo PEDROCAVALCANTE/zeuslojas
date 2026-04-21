@@ -1,0 +1,6 @@
+{
+  "name": "ZEUS - Gestão SaaS de Casas de Ração",
+  "description": "Sistema multi-tenant para controle de estoque, financeiro e relatórios para casas de ração.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

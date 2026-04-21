@@ -1,0 +1,106 @@
+{
+  "entities": {
+    "User": {
+      "title": "Usuário",
+      "description": "Dados do usuário e permissões de acesso",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["SUPER_ADMIN", "ADMIN_LOJA"] },
+        "tenant_id": { "type": "string" },
+        "ativo": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nome", "email", "role", "ativo"]
+    },
+    "Tenant": {
+      "title": "Loja/Tenant",
+      "description": "Configurações da loja",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string" },
+        "ativo": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nome", "ativo"]
+    },
+    "Produto": {
+      "title": "Produto",
+      "description": "Catálogo global de produtos",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string" },
+        "categoria": { "type": "string" },
+        "preco": { "type": "number" },
+        "ativo": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nome", "categoria", "preco", "ativo"]
+    },
+    "Estoque": {
+      "title": "Estoque",
+      "description": "Quantidades de produtos por loja",
+      "type": "object",
+      "properties": {
+        "produto_id": { "type": "string" },
+        "tenant_id": { "type": "string" },
+        "quantidade": { "type": "number" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Movimentacao": {
+      "title": "Movimentação de Estoque",
+      "description": "Histórico de entradas, saídas e transferências",
+      "type": "object",
+      "properties": {
+        "tipo": { "type": "string", "enum": ["ENTRADA", "SAIDA", "TRANSFERENCIA"] },
+        "produto_id": { "type": "string" },
+        "quantidade": { "type": "number" },
+        "tenant_origem": { "type": "string" },
+        "tenant_destino": { "type": "string" },
+        "criado_por": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Transacao": {
+      "title": "Transação Financeira",
+      "description": "Fluxo de caixa de receitas e despesas",
+      "type": "object",
+      "properties": {
+        "tipo": { "type": "string", "enum": ["RECEITA", "DESPESA"] },
+        "valor": { "type": "number" },
+        "tenant_id": { "type": "string" },
+        "descricao": { "type": "string" },
+        "categoria": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Perfis de usuários vinculados à autenticação"
+    },
+    "tenants/{tenantId}": {
+      "schema": "Tenant",
+      "description": "Entidades multi-tenant (Lojas)"
+    },
+    "produtos/{produtoId}": {
+      "schema": "Produto",
+      "description": "Catálogo global de produtos"
+    },
+    "estoque/{stockId}": {
+      "schema": "Estoque",
+      "description": "Relação de quantidade por produto e loja (ID: produtoId_tenantId)"
+    },
+    "movimentacoes/{movId}": {
+      "schema": "Movimentacao",
+      "description": "Logs imutáveis de estoque"
+    },
+    "transacoes/{txId}": {
+      "schema": "Transacao",
+      "description": "Registros financeiros"
+    }
+  }
+}
