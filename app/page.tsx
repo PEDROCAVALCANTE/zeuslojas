@@ -1503,12 +1503,49 @@ function InvoiceManagement({ data, selectedTenantId, onAction }: { data: any, se
         return;
       }
       
-      await addDoc(collection(db, 'notas_fiscais'), {
-        ...form,
-        items: form.items.map(i => ({ ...i, quantidade_restante: i.quantidade_original })),
-        criado_por: auth.currentUser?.uid,
-        created_at: new Date().toISOString()
+      const criado_por = auth.currentUser?.uid;
+      const now = new Date().toISOString();
+
+      await runTransaction(db, async (transaction) => {
+        // Read all stocks
+        const stockRefs = form.items.map(i => doc(db, 'estoque', `${i.produto_id}_${form.tenant_id}`));
+        const stockDocs = await Promise.all(stockRefs.map((ref: any) => transaction.get(ref)));
+        
+        // Write Nota Fiscal
+        const notaRef = doc(collection(db, 'notas_fiscais'));
+        transaction.set(notaRef, {
+          ...form,
+          items: form.items.map(i => ({ ...i, quantidade_restante: i.quantidade_original })),
+          criado_por,
+          created_at: now
+        });
+
+        // Loop items, apply Entrada logic individually
+        form.items.forEach((item, index) => {
+           const stockDoc: any = stockDocs[index];
+           const currentQty = stockDoc.exists() ? stockDoc.data().quantidade : 0;
+           
+           transaction.set(stockRefs[index], {
+              produto_id: item.produto_id,
+              tenant_id: form.tenant_id,
+              quantidade: currentQty + item.quantidade_original,
+              updated_at: now
+           }, { merge: true });
+           
+           const movementRef = doc(collection(db, 'movimentacoes'));
+           transaction.set(movementRef, {
+              tipo: 'ENTRADA',
+              produto_id: item.produto_id,
+              quantidade: item.quantidade_original,
+              tenant_origem: null,
+              tenant_destino: form.tenant_id,
+              criado_por,
+              created_at: now,
+              ...(item.mapped_product_id ? { mapped_product_id: item.mapped_product_id } : {})
+           });
+        });
       });
+
       setModalOpen(false);
       setForm({ ...form, numero_nota: '', fornecedor: '', items: [] });
       onAction();
@@ -1524,9 +1561,43 @@ function InvoiceManagement({ data, selectedTenantId, onAction }: { data: any, se
   };
 
   const handleDeleteNota = async (id: string) => {
-    if (!confirm('Deseja realmente excluir esta Nota Fiscal?')) return;
+    if (!confirm('Deseja realmente excluir esta Nota Fiscal e reverter os estoques inseridos?')) return;
     try {
-      await deleteDoc(doc(db, 'notas_fiscais', id));
+      const notaToDelete = data.notas.find((n: any) => n.id === id);
+      if (!notaToDelete) return;
+
+      const criado_por = auth.currentUser?.uid;
+      const now = new Date().toISOString();
+
+      await runTransaction(db, async (transaction) => {
+        const stockRefs = notaToDelete.items.map((i: any) => doc(db, 'estoque', `${i.produto_id}_${notaToDelete.tenant_id}`));
+        const stockDocs = await Promise.all(stockRefs.map((ref: any) => transaction.get(ref)));
+
+        const notaRef = doc(db, 'notas_fiscais', id);
+        transaction.delete(notaRef);
+
+        notaToDelete.items.forEach((item: any, index: number) => {
+           const stockDoc: any = stockDocs[index];
+           if (stockDoc.exists()) {
+             const currentQty = stockDoc.data().quantidade;
+             transaction.update(stockRefs[index], {
+                quantidade: currentQty - item.quantidade_original,
+                updated_at: now
+             });
+             
+             const movementRef = doc(collection(db, 'movimentacoes'));
+             transaction.set(movementRef, {
+                tipo: 'SAIDA',
+                produto_id: item.produto_id,
+                quantidade: item.quantidade_original,
+                tenant_origem: notaToDelete.tenant_id,
+                tenant_destino: null,
+                criado_por,
+                created_at: now
+             });
+           }
+        });
+      });
       onAction();
     } catch (e: any) {
       alert(`Erro ao excluir: ${e.message}`);
