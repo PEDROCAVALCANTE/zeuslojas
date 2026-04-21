@@ -28,7 +28,8 @@ import {
   collection, 
   getDocs, 
   doc, 
-  getDoc, 
+  getDoc,
+  setDoc,
   query,
   where
 } from 'firebase/firestore';
@@ -97,17 +98,19 @@ export default function ZeusApp() {
           if (profileDoc.exists()) {
             setUserProfile(profileDoc.data() as User);
           } else {
-            // We can treat baraodaserra@hotmail.com as SUPER_ADMIN even without a profile doc
+            // Auto-create profile for the bootstrapped SUPER_ADMIN
             if (fbUser.email === 'baraodaserra@hotmail.com') {
-              setUserProfile({
+              const newProfile: User = {
                 uid: fbUser.uid,
-                nome: fbUser.displayName || 'Super Admin',
+                nome: fbUser.displayName || 'Super Admin Zeus',
                 email: fbUser.email!,
                 role: 'SUPER_ADMIN',
                 tenant_id: null,
                 ativo: true,
                 created_at: new Date().toISOString()
-              });
+              };
+              await setDoc(doc(db, 'users', fbUser.uid), newProfile);
+              setUserProfile(newProfile);
             }
           }
         } catch (e) {
