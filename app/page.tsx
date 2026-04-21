@@ -671,6 +671,7 @@ export default function ZeusApp() {
               {activeTab === 'notas' && userProfile?.role === 'SUPER_ADMIN' && (
                 <InvoiceManagement 
                   data={data} 
+                  selectedTenantId={selectedTenantId}
                   onAction={() => fetchData()}
                 />
               )}
@@ -1482,19 +1483,24 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
   );
 }
 
-function InvoiceManagement({ data, onAction }: { data: any, onAction: any }) {
+function InvoiceManagement({ data, selectedTenantId, onAction }: { data: any, selectedTenantId: string, onAction: any }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
     numero_nota: '',
     fornecedor: '',
     rastreavel: true,
-    tenant_id: '',
+    tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId,
     items: [] as any[]
   });
   const [currentItem, setCurrentItem] = useState({ produto_id: '', quantidade_original: 0, preco_custo: 0 });
 
   const handleSaveNota = async () => {
     try {
+      if (!form.tenant_id) {
+        alert("A Loja Destino é obrigatória.");
+        return;
+      }
+      
       await addDoc(collection(db, 'notas_fiscais'), {
         ...form,
         items: form.items.map(i => ({ ...i, quantidade_restante: i.quantidade_original })),
@@ -1502,6 +1508,7 @@ function InvoiceManagement({ data, onAction }: { data: any, onAction: any }) {
         created_at: new Date().toISOString()
       });
       setModalOpen(false);
+      setForm({ ...form, numero_nota: '', fornecedor: '', items: [] });
       onAction();
     } catch (e: any) {
       alert(e.message);
@@ -1568,6 +1575,17 @@ function InvoiceManagement({ data, onAction }: { data: any, onAction: any }) {
                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Fornecedor</label>
                 <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm" value={form.fornecedor} onChange={e => setForm({...form, fornecedor: e.target.value})} />
               </div>
+              
+              {selectedTenantId === 'all' && (
+                <div className="md:col-span-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Loja Destino da Nota</label>
+                  <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm" value={form.tenant_id} onChange={e => setForm({...form, tenant_id: e.target.value})}>
+                    <option value="">Selecione a Loja...</option>
+                    {data.tenants.map((t: any) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                  </select>
+                </div>
+              )}
+
               <div className="md:col-span-2 flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-dashed border-slate-300">
                  <input type="checkbox" id="rastreavel" className="w-4 h-4" checked={form.rastreavel} onChange={e => setForm({...form, rastreavel: e.target.checked})} />
                  <label htmlFor="rastreavel" className="text-xs font-bold text-slate-700 uppercase flex items-center gap-2">
