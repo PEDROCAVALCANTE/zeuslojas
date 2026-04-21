@@ -30,6 +30,7 @@ import {
   doc, 
   getDoc,
   setDoc,
+  addDoc,
   query,
   where
 } from 'firebase/firestore';
@@ -301,58 +302,63 @@ export default function ZeusApp() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Sidebar - Geometric Balance styling */}
-      <aside className="w-64 bg-[#0f172a] text-white flex flex-col border-r border-[#1e293b] flex-shrink-0">
+      {/* Sidebar - Modern White Balance */}
+      <aside className="w-64 bg-white text-slate-600 flex flex-col border-r border-slate-200 flex-shrink-0 shadow-sm z-20">
         <div className="p-8">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-sky-400 rounded-lg flex items-center justify-center font-black text-slate-900 text-lg">Z</div>
-            <span className="text-2xl font-extrabold tracking-tighter">ZEUS</span>
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-sky-400 rounded-xl flex items-center justify-center font-black text-white text-xl shadow-lg shadow-blue-200">Z</div>
+            <span className="text-2xl font-black tracking-tighter text-slate-900 italic">ZEUS</span>
           </div>
-          <div className="text-[10px] text-slate-500 mt-1 font-bold uppercase tracking-wider">SaaS Multi-Tenant</div>
+          <div className="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-widest pl-1">Painel Operacional</div>
         </div>
 
-        <nav className="flex-1 px-2 space-y-1">
+        <nav className="flex-1 px-4 space-y-2">
           <NavItem 
-            icon={<LayoutDashboard size={18} />} 
+            icon={<LayoutDashboard size={20} className="text-blue-500" />} 
             label="Dashboard" 
             active={activeTab === 'dashboard'} 
+            activeColor="text-blue-600"
             onClick={() => setActiveTab('dashboard')} 
           />
           <NavItem 
-            icon={<Package size={18} />} 
-            label="Controle de Estoque" 
+            icon={<Package size={20} className="text-amber-500" />} 
+            label="Estoque" 
             active={activeTab === 'estoque'} 
+            activeColor="text-amber-600"
             onClick={() => setActiveTab('estoque')} 
           />
           <NavItem 
-            icon={<DollarSign size={18} />} 
-            label="Financeiro Central" 
+            icon={<DollarSign size={20} className="text-emerald-500" />} 
+            label="Financeiro" 
             active={activeTab === 'financeiro'} 
+            activeColor="text-emerald-600"
             onClick={() => setActiveTab('financeiro')} 
           />
           <NavItem 
-            icon={<Store size={18} />} 
-            label="Gestão de Lojas" 
+            icon={<Store size={20} className="text-indigo-500" />} 
+            label="Lojas" 
             active={activeTab === 'lojas'} 
+            activeColor="text-indigo-600"
             onClick={() => setActiveTab('lojas')} 
           />
           <NavItem 
-            icon={<BarChart3 size={18} />} 
-            label="Relatórios Avançados" 
+            icon={<BarChart3 size={20} className="text-rose-500" />} 
+            label="Relatórios" 
             active={activeTab === 'relatorios'} 
+            activeColor="text-rose-600"
             onClick={() => setActiveTab('relatorios')} 
           />
         </nav>
 
-        <div className="p-6 border-t border-[#1e293b]">
-          <div className="text-xs text-slate-400">Logado como</div>
-          <div className="font-semibold text-sm text-white">{userProfile?.nome || user?.displayName || 'Usuário'}</div>
-          <div className="text-[11px] text-sky-400 uppercase tracking-tighter font-bold">{userProfile?.role || 'Aguardando Perfil'}</div>
+        <div className="p-6 bg-slate-50/80 border-t border-slate-100">
+          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Operador Autenticado</div>
+          <div className="font-bold text-sm text-slate-900 truncate">{userProfile?.nome || user?.displayName || 'Usuário'}</div>
+          <div className="text-[10px] text-sky-600 uppercase tracking-tighter font-black mt-0.5">{userProfile?.role || 'Global'}</div>
           <button 
             onClick={handleLogout}
-            className="flex items-center gap-2 mt-4 text-slate-500 hover:text-white transition-colors text-sm"
+            className="flex items-center gap-2 mt-6 text-slate-400 hover:text-red-500 transition-colors text-xs font-bold uppercase tracking-widest"
           >
-            <LogOut size={14} /> Sair do Sistema
+            <LogOut size={14} /> Sair do Painel
           </button>
         </div>
       </aside>
@@ -535,7 +541,7 @@ export default function ZeusApp() {
                 />
               )}
 
-              {activeTab === 'lojas' && <TenantsManagement tenants={data.tenants} />}
+              {activeTab === 'lojas' && <TenantsManagement tenants={data.tenants} handleAction={handleAction} />}
               {activeTab === 'relatorios' && <ReportsView data={data} selectedTenantId={selectedTenantId} />}
             </motion.div>
           </AnimatePresence>
@@ -546,18 +552,20 @@ export default function ZeusApp() {
 }
 
 // Helper Components
-function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void }) {
+function NavItem({ icon, label, active, onClick, activeColor }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void, activeColor: string }) {
   return (
     <button 
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-6 py-3 rounded-l-lg transition-all text-sm font-medium cursor-pointer ${
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-bold cursor-pointer group ${
         active 
-          ? 'bg-[#1e293b] text-sky-400 border-l-4 border-sky-400' 
-          : 'text-slate-400 hover:bg-[#1e293b]/50 hover:text-slate-200'
+          ? `bg-slate-100 ${activeColor} shadow-sm shadow-slate-200/50` 
+          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
       }`}
     >
-      {icon}
-      <span>{label}</span>
+      <div className={`transition-transform duration-300 ${active ? 'scale-110' : 'group-hover:scale-110'}`}>
+        {icon}
+      </div>
+      <span className="tracking-tight">{label}</span>
     </button>
   );
 }
@@ -881,13 +889,43 @@ function FinancialManagement({ transactions, tenants, selectedTenantId, handleAc
   );
 }
 
-function TenantsManagement({ tenants }: { tenants: Tenant[] }) {
+function TenantsManagement({ tenants, handleAction }: { tenants: Tenant[], handleAction: any }) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [nome, setNome] = useState('');
+
+  const submit = async () => {
+    if (!nome) return;
+    try {
+      // Direct Firestore Write for robustness
+      const newTenant = {
+        nome,
+        ativo: true,
+        created_at: new Date().toISOString()
+      };
+      await addDoc(collection(db, 'tenants'), newTenant);
+      setModalOpen(false);
+      setNome('');
+      window.location.reload(); // Quick refresh for now to see new data
+    } catch (e: any) {
+      alert(`Erro ao criar loja: ${e.message}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
-       <div>
-          <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Gestão de Unidades</h2>
-          <p className="text-slate-500 text-sm font-medium">Controle de lojas cadastradas no sistema multi-tenant.</p>
+       <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Gestão de Unidades</h2>
+            <p className="text-slate-500 text-sm font-medium">Controle de lojas cadastradas no sistema multi-tenant.</p>
+          </div>
+          <button 
+            onClick={() => setModalOpen(true)}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Plus size={16} /> Nova Loja
+          </button>
         </div>
+        
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {tenants.map(t => (
             <div key={t.id} className="kpi-card hover:border-sky-400 transition-all cursor-pointer group">
@@ -903,7 +941,10 @@ function TenantsManagement({ tenants }: { tenants: Tenant[] }) {
               </div>
             </div>
           ))}
-          <div className="kpi-card border-dashed border-slate-300 bg-slate-50/50 flex items-center justify-center cursor-pointer hover:bg-slate-50 group">
+          <div 
+            onClick={() => setModalOpen(true)}
+            className="kpi-card border-dashed border-slate-300 bg-slate-50/50 flex items-center justify-center cursor-pointer hover:bg-slate-50 group"
+          >
              <div className="flex flex-col items-center gap-2">
                 <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 group-hover:bg-blue-600 group-hover:text-white transition-all">
                   <Plus size={20} />
@@ -912,6 +953,43 @@ function TenantsManagement({ tenants }: { tenants: Tenant[] }) {
              </div>
           </div>
         </div>
+
+        {modalOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-2xl p-8 w-full max-w-md"
+            >
+              <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic">Criar Nova Unidade</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Nome da Unidade</label>
+                  <input 
+                    type="text" 
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-sky-400 outline-none transition-all"
+                    placeholder="Ex: Zeus Serrinha"
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 mt-8">
+                <button onClick={() => setModalOpen(false)} className="flex-1 btn-secondary text-sm font-bold">Cancelar</button>
+                <button 
+                  onClick={submit} 
+                  className="flex-1 btn-primary text-sm font-bold"
+                  disabled={!nome}
+                >
+                  Confirmar Criação
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
     </div>
   );
 }
