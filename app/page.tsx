@@ -19,8 +19,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
+  signInWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
   User as FirebaseUser
@@ -50,6 +49,43 @@ export default function ZeusApp() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userProfile, setUserProfile] = useState<User | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  const fetchData = async () => {
+    if (!auth.currentUser) return;
+    
+    setLoading(true);
+    try {
+      const fetchSnap = async (coll: string) => {
+        const snap = await getDocs(collection(db, coll));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      };
+
+      const [tenants, products, stock, movements, transactions] = await Promise.all([
+        fetchSnap('tenants'),
+        fetchSnap('produtos'),
+        fetchSnap('estoque'),
+        fetchSnap('movimentacoes'),
+        fetchSnap('transacoes')
+      ]);
+
+      setData({
+        tenants: tenants as any,
+        products: products as any,
+        stock: stock as any,
+        movements: movements as any,
+        transactions: transactions as any,
+        users: []
+      });
+    } catch (err: any) {
+      console.warn('Silent Fetch Error (likely permission restriction):', err.message);
+      // Empty state handled by check in render
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
@@ -87,46 +123,14 @@ export default function ZeusApp() {
     return () => unsubscribe();
   }, []);
 
-  const fetchData = async () => {
-    if (!auth.currentUser) return;
-    
-    setLoading(true);
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
     try {
-      const fetchSnap = async (coll: string) => {
-        const snap = await getDocs(collection(db, coll));
-        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      };
-
-      const [tenants, products, stock, movements, transactions] = await Promise.all([
-        fetchSnap('tenants'),
-        fetchSnap('produtos'),
-        fetchSnap('estoque'),
-        fetchSnap('movimentacoes'),
-        fetchSnap('transacoes')
-      ]);
-
-      setData({
-        tenants: tenants as any,
-        products: products as any,
-        stock: stock as any,
-        movements: movements as any,
-        transactions: transactions as any,
-        users: []
-      });
+      await signInWithEmailAndPassword(auth, email, password);
     } catch (err: any) {
-      console.warn('Silent Fetch Error (likely permission restriction):', err.message);
-      // Empty state handled by check in render
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (err) {
       console.error('Login error', err);
+      setLoginError('Falha na autenticação. Verifique suas credenciais.');
     }
   };
 
@@ -173,15 +177,45 @@ export default function ZeusApp() {
              <div className="w-16 h-16 bg-sky-400 rounded-2xl flex items-center justify-center font-black text-slate-900 text-3xl shadow-xl shadow-sky-400/20">Z</div>
           </div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tighter mb-2">ZEUS MULTI-TENANT</h1>
-          <p className="text-slate-500 text-sm mb-10 font-medium">Benvindo ao Centro de Comando. Faça login para acessar sua unidade.</p>
+          <p className="text-slate-500 text-sm mb-8 font-medium">Faça login para acessar o sistema.</p>
           
-          <button 
-            onClick={handleLogin}
-            className="w-full flex items-center justify-center gap-3 bg-[#0f172a] text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95"
-          >
-            <Image src="https://picsum.photos/seed/google/24/24" alt="Google" width={20} height={20} className="rounded-full" />
-            Entrar com Google
-          </button>
+          <form onSubmit={handleLogin} className="space-y-4 text-left">
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">E-mail</label>
+              <input 
+                type="email" 
+                required
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-sky-400 outline-none transition-all"
+                placeholder="seu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Senha</label>
+              <input 
+                type="password" 
+                required
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-sky-400 outline-none transition-all"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+
+            {loginError && (
+              <div className="text-red-500 text-xs font-bold bg-red-50 p-3 rounded-lg border border-red-100 italic">
+                {loginError}
+              </div>
+            )}
+
+            <button 
+              type="submit"
+              className="w-full bg-[#0f172a] text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95 mt-2"
+            >
+              Entrar no Sistema
+            </button>
+          </form>
           
           <div className="mt-8 pt-8 border-t border-slate-100 grid grid-cols-2 gap-4">
             <div className="text-left">
