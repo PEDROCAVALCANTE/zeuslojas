@@ -21,7 +21,8 @@ import {
   ScanLine,
   Truck,
   Trash2,
-  ShoppingCart
+  ShoppingCart,
+  Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
@@ -717,6 +718,105 @@ function KPICard({ label, value, valueColor = 'text-slate-900', info }: { label:
   );
 }
 
+function SearchableProductSelect({ 
+  products, 
+  value, 
+  onChange, 
+  placeholder = "Selecione um produto...",
+  disabled = false,
+  stockData = null,
+  currentTenantId = null
+}: { 
+  products: Produto[], 
+  value: string, 
+  onChange: (val: string) => void, 
+  placeholder?: string,
+  disabled?: boolean,
+  stockData?: Estoque[] | null,
+  currentTenantId?: string | null
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filteredProducts = products.filter(p => 
+    p.nome.toLowerCase().includes(search.toLowerCase()) || 
+    (p.codigo && p.codigo.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const selectedProduct = products.find(p => p.id === value);
+
+  return (
+    <div className="relative w-full">
+      <div 
+        className={`w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm flex justify-between items-center ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+      >
+        <span className={selectedProduct ? 'text-slate-900 font-medium' : 'text-slate-400'}>
+          {selectedProduct ? selectedProduct.nome : placeholder}
+        </span>
+        <ChevronDown size={16} className="text-slate-400" />
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-slate-100 flex items-center gap-2 bg-slate-50">
+            <Search size={16} className="text-slate-400" />
+            <input 
+              type="text" 
+              className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
+              placeholder="Buscar por nome ou código..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {filteredProducts.length === 0 ? (
+              <div className="p-4 text-center text-sm text-slate-500 italic">Nenhum produto encontrado.</div>
+            ) : (
+              filteredProducts.map(p => {
+                let maxQty = null;
+                let isOutOfStock = false;
+                
+                if (stockData && currentTenantId) {
+                   maxQty = stockData.find((s: any) => s.produto_id === p.id && s.tenant_id === currentTenantId)?.quantidade || 0;
+                   if (maxQty <= 0) isOutOfStock = true;
+                }
+
+                return (
+                  <div 
+                    key={p.id}
+                    className={`px-4 py-3 text-sm flex justify-between items-center border-b border-slate-50 last:border-0 transition-colors ${
+                      isOutOfStock ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'cursor-pointer hover:bg-blue-50'
+                    }`}
+                    onClick={() => {
+                      if (!isOutOfStock) {
+                        onChange(p.id);
+                        setIsOpen(false);
+                      }
+                    }}
+                  >
+                    <div>
+                      <div className="font-bold text-slate-700">{p.nome}</div>
+                      {p.codigo && <div className="text-[10px] text-slate-400 font-mono mt-0.5">CÓDIGO: {p.codigo}</div>}
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-slate-900">R$ {p.preco.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</div>
+                      {maxQty !== null && (
+                        <div className={`text-[10px] font-black uppercase ${isOutOfStock ? 'text-red-500' : 'text-blue-500'}`}>QTD: {maxQty}</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Modular Views
 function InventoryManagement({ data, selectedTenantId, handleAction, userProfile }: { data: any, selectedTenantId: string, handleAction: any, userProfile: any }) {
   const [modalOpen, setModalOpen] = useState<'entrada' | 'saida' | 'transferencia' | 'produto' | 'apontamento' | null>(null);
@@ -988,27 +1088,23 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
                 </>
               ) : modalOpen === 'apontamento' ? (
                 <>
-                   <div>
+                  <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Produto Origem (Fardo/Saco)</label>
-                    <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" onChange={e => setForm({...form, produto_origem_id: e.target.value})}>
-                      <option value="">Selecione...</option>
-                      {data.products.map((p: any) => (
-                        <option key={p.id} value={p.id}>
-                          {p.codigo ? `[${p.codigo}] ` : ''}{p.nome}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableProductSelect 
+                      products={data.products}
+                      value={form.produto_origem_id}
+                      onChange={(val) => setForm({...form, produto_origem_id: val})}
+                      currentTenantId={selectedTenantId === 'all' ? form.tenant_id : selectedTenantId}
+                      stockData={data.stock}
+                    />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Produto Destino (Granel/Lotes)</label>
-                    <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" onChange={e => setForm({...form, produto_destino_id: e.target.value})}>
-                      <option value="">Selecione...</option>
-                      {data.products.map((p: any) => (
-                        <option key={p.id} value={p.id}>
-                          {p.codigo ? `[${p.codigo}] ` : ''}{p.nome}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableProductSelect 
+                      products={data.products}
+                      value={form.produto_destino_id}
+                      onChange={(val) => setForm({...form, produto_destino_id: val})}
+                    />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Quantidade de Conversão</label>
@@ -1032,17 +1128,13 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
                 <>
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Produto</label>
-                    <select 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                      onChange={(e) => setForm({ ...form, produto_id: e.target.value })}
-                    >
-                      <option value="">Selecione...</option>
-                      {data.products.map((p: any) => (
-                        <option key={p.id} value={p.id}>
-                          {p.codigo ? `[${p.codigo}] ` : ''}{p.nome}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableProductSelect 
+                      products={data.products}
+                      value={form.produto_id}
+                      onChange={(val) => setForm({...form, produto_id: val})}
+                      currentTenantId={selectedTenantId === 'all' ? (modalOpen === 'transferencia' ? form.tenant_origem : form.tenant_id) : selectedTenantId}
+                      stockData={modalOpen === 'saida' || modalOpen === 'transferencia' ? data.stock : null}
+                    />
                   </div>
 
                   {modalOpen !== 'transferencia' ? (
@@ -1218,12 +1310,27 @@ function FinancialManagement({ transactions, tenants, selectedTenantId, handleAc
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Categoria</label>
-                  <input 
-                    type="text" 
-                    placeholder="Ex: Vendas"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                    onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-                  />
+                  {modalOpen === 'despesa' ? (
+                    <select
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      value={form.categoria}
+                      onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="Internet">Internet</option>
+                      <option value="Energia">Energia</option>
+                      <option value="Água">Água</option>
+                      <option value="Outros">Outros</option>
+                    </select>
+                  ) : (
+                    <input 
+                      type="text" 
+                      placeholder="Ex: Vendas"
+                      value={form.categoria}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+                    />
+                  )}
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Valor (R$)</label>
@@ -1568,17 +1675,14 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
             <div className="space-y-4">
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Produto (Estoque)</label>
-                <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm" value={vendaForm.produto_id} onChange={e => setVendaForm({ ...vendaForm, produto_id: e.target.value })}>
-                  <option value="">Selecione...</option>
-                  {data.products.map((p: any) => {
-                    const maxQty = data.stock.find((s: any) => s.produto_id === p.id && s.tenant_id === currentTenantId)?.quantidade || 0;
-                    return (
-                      <option key={p.id} value={p.id} disabled={maxQty <= 0}>
-                        {p.nome} (Qtd: {maxQty}) - R$ {p.preco.toLocaleString('pt-br', { minimumFractionDigits: 2 })}
-                      </option>
-                    );
-                  })}
-                </select>
+                <SearchableProductSelect 
+                  products={data.products}
+                  value={vendaForm.produto_id}
+                  onChange={(val) => setVendaForm({ ...vendaForm, produto_id: val })}
+                  stockData={data.stock}
+                  currentTenantId={currentTenantId}
+                  placeholder="Buscar produto..."
+                />
               </div>
               
               <div className="grid grid-cols-2 gap-4">
@@ -1809,10 +1913,11 @@ function InvoiceManagement({ data, selectedTenantId, onAction }: { data: any, se
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Produto Original</label>
-                    <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm" value={currentItem.produto_id} onChange={e => setCurrentItem({...currentItem, produto_id: e.target.value})}>
-                      <option value="">Selecione...</option>
-                      {data.products.map((p: any) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                    </select>
+                    <SearchableProductSelect 
+                      products={data.products}
+                      value={currentItem.produto_id}
+                      onChange={(val) => setCurrentItem({...currentItem, produto_id: val})}
+                    />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Qtd Entrada</label>
