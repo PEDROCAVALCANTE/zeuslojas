@@ -1530,7 +1530,45 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
           throw new Error("Estoque insuficiente para esta venda.");
         }
 
-        // Deduct Stock
+        // Tracking Logic for Rastreavel Notas Fiscais
+        // Find trackable notes containing the sold product
+        const potentialNotes = data.notas
+          .filter((n: any) => n.tenant_id === currentTenantId && n.rastreavel && n.items.some((it: any) => it.produto_id === vendaForm.produto_id && it.quantidade_restante > 0))
+          // Sort by date (FIFO)
+          .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+        // We fetch fresh versions of these select note documents to mutate transactionally
+        const noteRefsAndDocs = await Promise.all(
+          potentialNotes.map(async (n: any) => {
+            const r = doc(db, 'notas_fiscais', n.id);
+            const d = await transaction.get(r);
+            return { ref: r, doc: d };
+          })
+        );
+
+        let qtyToDeduct = vendaForm.quantidade;
+
+        noteRefsAndDocs.forEach(({ ref, doc: nDoc }) => {
+          if (!nDoc.exists() || qtyToDeduct <= 0) return;
+          const nData = nDoc.data();
+          let noteChanged = false;
+
+          const updatedItems = nData.items.map((it: any) => {
+            if (it.produto_id === vendaForm.produto_id && it.quantidade_restante > 0 && qtyToDeduct > 0) {
+              const deduct = Math.min(it.quantidade_restante, qtyToDeduct);
+              qtyToDeduct -= deduct;
+              noteChanged = true;
+              return { ...it, quantidade_restante: it.quantidade_restante - deduct };
+            }
+            return it;
+          });
+
+          if (noteChanged) {
+             transaction.update(ref, { items: updatedItems });
+          }
+        });
+
+        // Deduct Global Stock
         transaction.update(stockRef, {
           quantidade: currentQty - vendaForm.quantidade,
           updated_at: now
@@ -1862,14 +1900,30 @@ function InvoiceManagement({ data, selectedTenantId, onAction }: { data: any, se
                 </div>
              </div>
              <div className="space-y-2">
-                {n.items.map((it: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center text-xs p-2 bg-slate-50 rounded-lg">
-                    <span className="font-bold">{data.products.find((p: any) => p.id === it.produto_id)?.nome}</span>
-                    <div className="text-right">
-                       <div className="font-black text-slate-900">{it.quantidade_restante} / {it.quantidade_original}</div>
+                {n.items.map((it: any, idx: number) => {
+                  const vendidos = it.quantidade_original - it.quantidade_restante;
+                  return (
+                    <div key={idx} className="flex flex-col gap-1 text-xs p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="font-bold text-slate-800">{data.products.find((p: any) => p.id === it.produto_id)?.nome}</span>
+                      <div className="flex justify-between items-center mt-1">
+                         <div className="flex gap-3">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-slate-400 uppercase">Original</span>
+                              <span className="font-bold text-slate-600">{it.quantidade_original}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-emerald-500 uppercase">Vendidos</span>
+                              <span className="font-black text-emerald-600">{vendidos}</span>
+                            </div>
+                         </div>
+                         <div className="flex flex-col items-end">
+                            <span className="text-[9px] font-black text-blue-400 uppercase">Restante</span>
+                            <span className="font-black text-blue-600 text-sm">{it.quantidade_restante}</span>
+                         </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
              </div>
           </div>
         ))}
