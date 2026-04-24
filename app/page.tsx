@@ -22,16 +22,21 @@ import {
   Truck,
   Trash2,
   ShoppingCart,
-  Search
+  Search,
+  UserPlus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
 import { 
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
+  getAuth,
   User as FirebaseUser
 } from 'firebase/auth';
+import { initializeApp } from 'firebase/app';
+import firebaseConfig from '../firebase-applet-config.json';
 import { 
   collection, 
   getDocs, 
@@ -279,10 +284,11 @@ export default function ZeusApp() {
           animate={{ opacity: 1, scale: 1 }}
           className="bg-white rounded-2xl p-10 w-full max-w-md text-center shadow-2xl"
         >
-          <div className="flex justify-center mb-6">
-             <div className="w-16 h-16 bg-sky-400 rounded-2xl flex items-center justify-center font-black text-slate-900 text-3xl shadow-xl shadow-sky-400/20">Z</div>
-          </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tighter mb-2">ZEUS MULTI-TENANT</h1>
+            <div className="flex items-center justify-center gap-6 mb-6">
+               <Image src="https://iili.io/B6fUR6l.png" alt="Zeus CP e Ferragista" width={120} height={60} className="object-contain h-16 w-auto" />
+               <Image src="https://iili.io/B6fUunf.png" alt="Zeus Atacarejo" width={120} height={60} className="object-contain h-16 w-auto" />
+            </div>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tighter mb-2">SISTEMA ZEUS</h1>
           <p className="text-slate-500 text-sm mb-8 font-medium">Faça login para acessar o sistema.</p>
           
           <form onSubmit={handleLogin} className="space-y-4 text-left">
@@ -420,20 +426,24 @@ export default function ZeusApp() {
             activeColor="text-amber-600"
             onClick={() => setActiveTab('estoque')} 
           />
-          <NavItem 
-            icon={<DollarSign size={20} className="text-emerald-500" />} 
-            label="Financeiro" 
-            active={activeTab === 'financeiro'} 
-            activeColor="text-emerald-600"
-            onClick={() => setActiveTab('financeiro')} 
-          />
-          <NavItem 
-            icon={<Store size={20} className="text-indigo-500" />} 
-            label="Lojas" 
-            active={activeTab === 'lojas'} 
-            activeColor="text-indigo-600"
-            onClick={() => setActiveTab('lojas')} 
-          />
+          {userProfile?.role === 'SUPER_ADMIN' && (
+            <NavItem 
+              icon={<DollarSign size={20} className="text-emerald-500" />} 
+              label="Financeiro" 
+              active={activeTab === 'financeiro'} 
+              activeColor="text-emerald-600"
+              onClick={() => setActiveTab('financeiro')} 
+            />
+          )}
+          {userProfile?.role === 'SUPER_ADMIN' && (
+            <NavItem 
+              icon={<Store size={20} className="text-indigo-500" />} 
+              label="Lojas" 
+              active={activeTab === 'lojas'} 
+              activeColor="text-indigo-600"
+              onClick={() => setActiveTab('lojas')} 
+            />
+          )}
           <NavItem 
             icon={<Wallet size={20} className="text-violet-500" />} 
             label="Módulo Caixa" 
@@ -1367,6 +1377,53 @@ function FinancialManagement({ transactions, tenants, selectedTenantId, handleAc
 function TenantsManagement({ tenants, onManage }: { tenants: Tenant[], onManage: (id: string) => void }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [nome, setNome] = useState('');
+  
+  const [userModalOpen, setUserModalOpen] = useState(false);
+  const [selectedTenantForUser, setSelectedTenantForUser] = useState<Tenant | null>(null);
+  const [userForm, setUserForm] = useState({ email: '', password: '' });
+
+  const handleDeleteTenant = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if(confirm('Tem certeza que deseja deletar permanentemente esta loja?')) {
+      try {
+        await deleteDoc(doc(db, 'tenants', id));
+        window.location.reload();
+      } catch (err: any) {
+        alert(err.message);
+      }
+    }
+  };
+
+  const openUserModal = (e: React.MouseEvent, t: Tenant) => {
+    e.stopPropagation();
+    setSelectedTenantForUser(t);
+    setUserModalOpen(true);
+  };
+
+  const handleCreateUser = async () => {
+    if (!userForm.email || !userForm.password || !selectedTenantForUser) return;
+    try {
+      const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp" + Date.now());
+      const secondaryAuth = getAuth(secondaryApp);
+      
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, userForm.email, userForm.password);
+      await signOut(secondaryAuth);
+      
+      // now create firestore profile
+      await setDoc(doc(db, 'users', userCredential.user.uid), {
+         email: userForm.email,
+         role: 'ADMIN_LOJA',
+         tenant_id: selectedTenantForUser.id,
+         created_at: new Date().toISOString()
+      });
+      
+      setUserModalOpen(false);
+      setUserForm({ email: '', password: '' });
+      alert(`Usuário admin criado para a loja ${selectedTenantForUser.nome}!`);
+    } catch (err: any) {
+      alert(`Erro ao criar usuário: ${err.message}`);
+    }
+  };
 
   const submit = async () => {
     if (!nome) return;
@@ -1401,24 +1458,45 @@ function TenantsManagement({ tenants, onManage }: { tenants: Tenant[], onManage:
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {tenants.map(t => (
+          {tenants.map(t => {
+            const isAtacarejo = t.nome.toLowerCase().includes('atacarejo');
+            const isFerragista = t.nome.toLowerCase().includes('ferragista') || t.nome.toLowerCase().includes('cp');
+            const logoUrl = isAtacarejo 
+              ? "https://iili.io/B6fUunf.png" 
+              : (isFerragista ? "https://iili.io/B6fUR6l.png" : null);
+
+            return (
             <div 
               key={t.id} 
               onClick={() => onManage(t.id)}
-              className="kpi-card hover:border-sky-400 transition-all cursor-pointer group"
+              className="kpi-card hover:border-sky-400 transition-all cursor-pointer group flex flex-col"
             >
-              <div className="flex justify-between items-start">
-                <Store size={24} className="text-sky-400" />
-                <span className="tag tag-success">Ativa</span>
+              <div className="flex justify-between items-start mb-4">
+                <div className="h-10 flex items-center">
+                  {logoUrl ? (
+                    <Image src={logoUrl} alt={t.nome} width={100} height={40} className="object-contain h-10 w-auto" />
+                  ) : (
+                    <Store size={24} className="text-sky-400" />
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={(e) => openUserModal(e, t)} className="text-blue-500 hover:text-blue-700 bg-blue-50 p-1.5 rounded-md transition-colors" title="Criar Usuário">
+                    <UserPlus size={16} />
+                  </button>
+                  <button onClick={(e) => handleDeleteTenant(e, t.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-1.5 rounded-md transition-colors" title="Excluir Loja">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
-              <h3 className="text-lg font-black text-slate-900 mt-2">{t.nome}</h3>
-              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tenant ID: {t.id}</div>
+              <h3 className="text-lg font-black text-slate-900 mt-auto">{t.nome}</h3>
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2">Tenant ID: {t.id}</div>
               <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center text-[11px] text-slate-500 font-medium">
                 <span>Criado em {new Date(t.created_at).toLocaleDateString('pt-br')}</span>
                 <span className="text-blue-600 font-bold group-hover:translate-x-1 transition-transform">Gerenciar Unidade →</span>
               </div>
             </div>
-          ))}
+            );
+          })}
           <div 
             onClick={() => setModalOpen(true)}
             className="kpi-card border-dashed border-slate-300 bg-slate-50/50 flex items-center justify-center cursor-pointer hover:bg-slate-50 group"
@@ -1463,6 +1541,54 @@ function TenantsManagement({ tenants, onManage }: { tenants: Tenant[], onManage:
                   disabled={!nome}
                 >
                   Confirmar Criação
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        {userModalOpen && selectedTenantForUser && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-2xl p-8 w-full max-w-md"
+            >
+              <h3 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tight italic">Novo Acesso</h3>
+              <p className="text-sm font-medium text-slate-500 mb-6">Criar usuário admin para <span className="font-bold text-slate-900">{selectedTenantForUser.nome}</span></p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Email</label>
+                  <input 
+                    type="email" 
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-sky-400 outline-none transition-all"
+                    placeholder="email@loja.com"
+                    value={userForm.email}
+                    onChange={(e) => setUserForm({...userForm, email: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Senha (mín. 6 caracteres)</label>
+                  <input 
+                    type="password" 
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-sky-400 outline-none transition-all"
+                    placeholder="******"
+                    value={userForm.password}
+                    onChange={(e) => setUserForm({...userForm, password: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 mt-8">
+                <button onClick={() => setUserModalOpen(false)} className="flex-1 btn-secondary text-sm font-bold">Cancelar</button>
+                <button 
+                  onClick={handleCreateUser} 
+                  className="flex-1 btn-primary text-sm font-bold"
+                  disabled={!userForm.email || !userForm.password}
+                >
+                  Criar Acesso
                 </button>
               </div>
             </motion.div>

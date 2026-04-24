@@ -152,7 +152,8 @@ service cloud.firestore {
     match /tenants/{tenantId} {
       allow get: if belongsToTenant(tenantId);
       allow list: if isSuperAdmin() || (isSignedIn() && resource.data.id == getTenantId());
-      allow write: if isSuperAdmin() && isValidTenant(incoming());
+      allow create, update: if isSuperAdmin() && isValidTenant(incoming());
+      allow delete: if isSuperAdmin();
     }
 
     // Products (Global Catalog)
