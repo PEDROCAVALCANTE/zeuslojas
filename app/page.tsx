@@ -282,14 +282,14 @@ export default function ZeusApp() {
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-2xl p-10 w-full max-w-md text-center shadow-2xl"
+          className="bg-white rounded-2xl p-8 w-full max-w-sm text-center shadow-2xl"
         >
-            <div className="flex items-center justify-center gap-6 mb-6">
-               <Image src="https://iili.io/B6fUR6l.png" alt="Zeus CP e Ferragista" width={120} height={60} className="object-contain h-16 w-auto" />
-               <Image src="https://iili.io/B6fUunf.png" alt="Zeus Atacarejo" width={120} height={60} className="object-contain h-16 w-auto" />
+            <div className="flex items-center justify-center gap-4 mb-6">
+               <Image src="https://iili.io/B6fUR6l.png" alt="Zeus CP e Ferragista" width={100} height={40} className="object-contain h-12 w-auto" />
+               <Image src="https://iili.io/B6fUunf.png" alt="Zeus Atacarejo" width={100} height={40} className="object-contain h-12 w-auto" />
             </div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tighter mb-2">SISTEMA ZEUS</h1>
-          <p className="text-slate-500 text-sm mb-8 font-medium">Faça login para acessar o sistema.</p>
+            <h1 className="text-xl font-black text-slate-900 tracking-tighter mb-2">SISTEMA ZEUS</h1>
+          <p className="text-slate-500 text-xs mb-6 font-medium">Faça login para acessar o sistema.</p>
           
           <form onSubmit={handleLogin} className="space-y-4 text-left">
             <div>
