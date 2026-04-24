@@ -975,8 +975,23 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
                     <td className="font-bold text-slate-800">{p.nome}</td>
                     <td><span className="text-[10px] bg-slate-100 px-2 py-1 rounded font-bold text-slate-500 uppercase">{p.categoria}</span></td>
                     <td className="font-mono font-bold text-blue-600">R$ {p.preco.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</td>
-                    <td className="text-center">
-                      <span className={`text-lg font-black ${isCrit ? 'text-red-500' : 'text-slate-700'}`}>{qty}</span>
+                    <td className="text-center align-top">
+                      <div className="flex flex-col items-center">
+                        <span className={`text-lg font-black ${isCrit ? 'text-red-500' : 'text-slate-700'}`}>{qty}</span>
+                        {selectedTenantId === 'all' && data.tenants && data.tenants.length > 0 && (
+                          <div className="mt-2 w-full min-w-[140px] border-t border-slate-100 pt-2 space-y-1">
+                            {data.tenants.map((t: any) => {
+                              const tQty = getStockQty(p.id, t.id);
+                              return (
+                                <div key={t.id} className="flex justify-between items-center text-[10px]">
+                                  <span className="text-slate-500 truncate mr-2 text-left" title={t.nome}>{t.nome}</span>
+                                  <span className={`font-bold ${tQty === 0 ? 'text-slate-300' : 'text-slate-700'}`}>{tQty}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td>
                       {isCrit ? (
@@ -1040,7 +1055,24 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
                   <tr key={p.id} className={isCrit ? 'bg-red-50/50' : ''}>
                     <td className="font-mono text-xs text-slate-400">{p.codigo || `#${p.id.slice(0,6)}`}</td>
                     <td className="font-bold text-slate-800">{p.nome}</td>
-                    <td className={`text-center font-black ${isCrit ? 'text-red-600' : 'text-slate-700'}`}>{p.qty}</td>
+                    <td className={`text-center font-black ${isCrit ? 'text-red-600' : 'text-slate-700'} align-top`}>
+                      <div className="flex flex-col items-center">
+                        <span>{p.qty}</span>
+                        {selectedTenantId === 'all' && data.tenants && data.tenants.length > 0 && (
+                          <div className="mt-2 w-full min-w-[140px] border-t border-red-100 pt-2 space-y-1">
+                            {data.tenants.map((t: any) => {
+                              const tQty = getStockQty(p.id, t.id);
+                              return (
+                                <div key={t.id} className="flex justify-between items-center text-[10px]">
+                                  <span className="text-slate-500 truncate mr-2 text-left" title={t.nome}>{t.nome}</span>
+                                  <span className={`font-bold ${tQty === 0 ? 'text-red-300/50' : 'text-red-500'}`}>{tQty}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </td>
                     <td className="text-center font-bold text-blue-900">{p.estoque_minimo}</td>
                     <td>
                        {isCrit ? (
