@@ -588,15 +588,16 @@ export default function ZeusApp() {
           />
         </nav>
 
-        <div className="p-6 bg-slate-50/80 border-t border-slate-100">
-          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Operador Autenticado</div>
-          <div className="font-bold text-sm text-slate-900 truncate">{userProfile?.nome || user?.displayName || 'Usuário'}</div>
-          <div className="text-[10px] text-sky-600 uppercase tracking-tighter font-black mt-0.5">{userProfile?.role || 'Global'}</div>
+        <div className="p-4 bg-slate-50/80 border-t border-slate-100 flex flex-col items-center">
+          <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold mb-2">
+             {userProfile?.nome?.charAt(0) || user?.displayName?.charAt(0) || 'U'}
+          </div>
           <button 
             onClick={handleLogout}
-            className="flex items-center gap-2 mt-6 text-slate-400 hover:text-red-500 transition-colors text-xs font-bold uppercase tracking-widest"
+            className="p-2 text-slate-400 hover:text-red-500 transition-colors bg-white border border-slate-200 rounded-lg shadow-sm"
+            title="Sair do Painel"
           >
-            <LogOut size={14} /> Sair do Painel
+            <LogOut size={16} />
           </button>
         </div>
       </aside>
