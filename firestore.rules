@@ -159,7 +159,8 @@ service cloud.firestore {
     // Products (Global Catalog)
     match /produtos/{produtoId} {
       allow read: if isSignedIn();
-      allow write: if isSuperAdmin() && isValidProduct(incoming());
+      allow create, update: if isSuperAdmin() && isValidProduct(incoming());
+      allow delete: if isSuperAdmin();
     }
 
     // Stock

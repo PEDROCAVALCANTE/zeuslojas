@@ -56,7 +56,7 @@ body {
 }
 
 .kpi-card {
-  @apply bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-2 shadow-sm;
+  @apply bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-1 shadow-sm;
 }
 
 .data-table {

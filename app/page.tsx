@@ -521,25 +521,25 @@ export default function ZeusApp() {
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar - Modern White Balance */}
-      <aside className="w-64 bg-white text-slate-600 flex flex-col border-r border-slate-200 flex-shrink-0 shadow-sm z-20">
-        <div className="p-8">
+      <aside className="w-52 bg-white text-slate-600 flex flex-col border-r border-slate-200 flex-shrink-0 shadow-sm z-20">
+        <div className="p-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-sky-400 rounded-xl flex items-center justify-center font-black text-white text-xl shadow-lg shadow-blue-200">Z</div>
-            <span className="text-2xl font-black tracking-tighter text-slate-900 italic">ZEUS</span>
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-sky-400 rounded-lg flex items-center justify-center font-black text-white text-lg shadow-lg shadow-blue-200">Z</div>
+            <span className="text-xl font-black tracking-tighter text-slate-900 italic">ZEUS</span>
           </div>
           <div className="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-widest pl-1">Painel Operacional</div>
         </div>
 
-        <nav className="flex-1 px-4 space-y-2">
+        <nav className="flex-1 px-4 space-y-1">
           <NavItem 
-            icon={<LayoutDashboard size={20} className="text-blue-500" />} 
+            icon={<LayoutDashboard size={18} className="text-blue-500" />} 
             label="Dashboard" 
             active={activeTab === 'dashboard'} 
             activeColor="text-blue-600"
             onClick={() => setActiveTab('dashboard')} 
           />
           <NavItem 
-            icon={<Package size={20} className="text-amber-500" />} 
+            icon={<Package size={18} className="text-amber-500" />} 
             label="Estoque" 
             active={activeTab === 'estoque'} 
             activeColor="text-amber-600"
@@ -547,7 +547,7 @@ export default function ZeusApp() {
           />
           {userProfile?.role === 'SUPER_ADMIN' && (
             <NavItem 
-              icon={<DollarSign size={20} className="text-emerald-500" />} 
+              icon={<DollarSign size={18} className="text-emerald-500" />} 
               label="Financeiro" 
               active={activeTab === 'financeiro'} 
               activeColor="text-emerald-600"
@@ -556,7 +556,7 @@ export default function ZeusApp() {
           )}
           {userProfile?.role === 'SUPER_ADMIN' && (
             <NavItem 
-              icon={<Store size={20} className="text-indigo-500" />} 
+              icon={<Store size={18} className="text-indigo-500" />} 
               label="Lojas" 
               active={activeTab === 'lojas'} 
               activeColor="text-indigo-600"
@@ -564,7 +564,7 @@ export default function ZeusApp() {
             />
           )}
           <NavItem 
-            icon={<Wallet size={20} className="text-violet-500" />} 
+            icon={<Wallet size={18} className="text-violet-500" />} 
             label="Módulo Caixa" 
             active={activeTab === 'caixa'} 
             activeColor="text-violet-600"
@@ -572,7 +572,7 @@ export default function ZeusApp() {
           />
           {userProfile?.role === 'SUPER_ADMIN' && (
             <NavItem 
-              icon={<FileText size={20} className="text-orange-500" />} 
+              icon={<FileText size={18} className="text-orange-500" />} 
               label="Notas Fiscais" 
               active={activeTab === 'notas'} 
               activeColor="text-orange-600"
@@ -580,7 +580,7 @@ export default function ZeusApp() {
             />
           )}
           <NavItem 
-            icon={<BarChart3 size={20} className="text-rose-500" />} 
+            icon={<BarChart3 size={18} className="text-rose-500" />} 
             label="Relatórios" 
             active={activeTab === 'relatorios'} 
             activeColor="text-rose-600"
@@ -825,7 +825,7 @@ function NavItem({ icon, label, active, onClick, activeColor }: { icon: React.Re
   return (
     <button 
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-bold cursor-pointer group ${
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-sm font-bold cursor-pointer group ${
         active 
           ? `bg-slate-100 ${activeColor} shadow-sm shadow-slate-200/50` 
           : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
@@ -842,9 +842,9 @@ function NavItem({ icon, label, active, onClick, activeColor }: { icon: React.Re
 function KPICard({ label, value, valueColor = 'text-slate-900', info }: { label: string, value: string, valueColor?: string, info: React.ReactNode }) {
   return (
     <div className="kpi-card shadow-sm group hover:border-sky-400 transition-colors">
-      <div className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">{label}</div>
-      <div className={`text-2xl font-black ${valueColor} group-hover:scale-105 origin-left transition-transform`}>{value}</div>
-      <div className="text-[11px] mt-1">{info}</div>
+      <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{label}</div>
+      <div className={`text-xl font-black ${valueColor} group-hover:scale-105 origin-left transition-transform`}>{value}</div>
+      <div className="text-[10px] mt-1">{info}</div>
     </div>
   );
 }
