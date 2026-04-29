@@ -23,7 +23,8 @@ import {
   Trash2,
   ShoppingCart,
   Search,
-  UserPlus
+  UserPlus,
+  FileUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
@@ -47,8 +48,10 @@ import {
   deleteDoc,
   query,
   where,
-  runTransaction
+  runTransaction,
+  writeBatch
 } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
 import { auth, db } from '@/lib/firebase';
 import { Tenant, User, Produto, Estoque, Movimentacao, Transacao, Caixa, NotaFiscal } from '@/lib/types';
 
@@ -71,6 +74,7 @@ export default function ZeusApp() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [uploadingExcel, setUploadingExcel] = useState(false);
 
   const fetchData = async () => {
     if (!auth.currentUser) return;
@@ -169,8 +173,123 @@ export default function ZeusApp() {
 
   const handleLogout = () => signOut(auth);
 
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingExcel(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const json = XLSX.utils.sheet_to_json<any>(worksheet);
+
+      if (json.length === 0) {
+        alert("A planilha está vazia.");
+        return;
+      }
+
+      const criado_por = auth.currentUser?.uid;
+      if (!criado_por) throw new Error("Usuário não autenticado");
+
+      let batch = writeBatch(db);
+      let count = 0;
+
+      for (const row of json) {
+        const codigo = String(row['Codigo'] || row['codigo'] || '').trim();
+        const nome = String(row['Produto'] || row['produto'] || row['Nome'] || '').trim();
+        const categoria = String(row['Categoria'] || row['categoria'] || 'Diversos').trim();
+        const preco = parseFloat(row['Preco'] || row['preco'] || row['Preço'] || '0');
+        const estoqueMinimo = parseInt(row['EstoqueMinimo'] || row['estoque_minimo'] || '5', 10);
+        const tenantId = String(row['LojaID'] || row['loja_id'] || row['tenant_id'] || '').trim();
+        const quantidade = parseInt(row['Quantidade'] || row['quantidade'] || '0', 10);
+        const ativo = row['Ativo'] !== undefined ? Boolean(row['Ativo']) : true;
+
+        if (!nome || !tenantId) continue;
+
+        let produtoId = '';
+        if (data?.products) {
+          if (codigo) {
+             const p = data.products.find(p => p.codigo === codigo);
+             if (p) produtoId = p.id;
+          }
+          if (!produtoId) {
+             const p = data.products.find(p => p.nome.toLowerCase() === nome.toLowerCase());
+             if (p) produtoId = p.id;
+          }
+        }
+
+        if (!produtoId) {
+          const newProdRef = doc(collection(db, 'produtos'));
+          produtoId = newProdRef.id;
+          batch.set(newProdRef, {
+            codigo: codigo || produtoId.slice(0, 8),
+            nome,
+            categoria,
+            preco,
+            estoque_minimo: estoqueMinimo,
+            ativo,
+            created_at: new Date().toISOString()
+          });
+        }
+        
+        if (quantidade !== 0) {
+          const stockId = `${produtoId}_${tenantId}`;
+          const stockRef = doc(db, 'estoque', stockId);
+          const currentStock = data?.stock?.find(s => s.id === stockId);
+          const currentQty = currentStock ? currentStock.quantidade : 0;
+          const newQty = currentQty + quantidade;
+          
+          batch.set(stockRef, {
+            produto_id: produtoId,
+            tenant_id: tenantId,
+            quantidade: Math.max(0, newQty),
+            updated_at: new Date().toISOString()
+          }, { merge: true });
+
+          const movRef = doc(collection(db, 'movimentacoes'));
+          batch.set(movRef, {
+            tipo: quantidade > 0 ? 'ENTRADA' : 'SAIDA',
+            produto_id: produtoId,
+            quantidade: Math.abs(quantidade),
+            tenant_origem: quantidade < 0 ? tenantId : null,
+            tenant_destino: quantidade > 0 ? tenantId : null,
+            criado_por,
+            created_at: new Date().toISOString()
+          });
+        }
+
+        count++;
+        if (count >= 400) {
+          await batch.commit();
+          batch = writeBatch(db);
+          count = 0;
+        }
+      }
+      
+      if (count > 0) {
+        await batch.commit();
+      }
+
+      alert("Planilha importada com sucesso!");
+      fetchData();
+    } catch (err: any) {
+      console.error(err);
+      alert("Erro ao importar planilha: " + err.message);
+    } finally {
+      setUploadingExcel(false);
+      e.target.value = '';
+    }
+  };
+
   const handleAction = async (endpoint: string, payload: any) => {
     try {
+      if (endpoint === 'refresh') {
+         await fetchData();
+         return;
+      }
+
       const criado_por = auth.currentUser?.uid;
       if (!criado_por) throw new Error("Usuário não autenticado");
 
@@ -654,6 +773,8 @@ export default function ZeusApp() {
                   selectedTenantId={selectedTenantId} 
                   handleAction={handleAction} 
                   userProfile={userProfile}
+                  uploadingExcel={uploadingExcel}
+                  handleExcelUpload={handleExcelUpload}
                 />
               )}
 
@@ -828,8 +949,8 @@ function SearchableProductSelect({
 }
 
 // Modular Views
-function InventoryManagement({ data, selectedTenantId, handleAction, userProfile }: { data: any, selectedTenantId: string, handleAction: any, userProfile: any }) {
-  const [modalOpen, setModalOpen] = useState<'entrada' | 'saida' | 'transferencia' | 'produto' | 'apontamento' | null>(null);
+function InventoryManagement({ data, selectedTenantId, handleAction, userProfile, uploadingExcel, handleExcelUpload }: { data: any, selectedTenantId: string, handleAction: any, userProfile: any, uploadingExcel?: boolean, handleExcelUpload?: any }) {
+  const [modalOpen, setModalOpen] = useState<'entrada' | 'saida' | 'transferencia' | 'produto' | 'edit_produto' | 'apontamento' | null>(null);
   const [view, setView] = useState<'geral' | 'curva' | 'min_estoque'>('geral');
   const [form, setForm] = useState({ 
     produto_id: '', 
@@ -857,6 +978,19 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
     return data.stock.filter((s: any) => s.produto_id === prodId).reduce((acc: number, s: any) => acc + s.quantidade, 0);
   };
 
+  const handleDeleteProduct = async () => {
+    if (!form.produto_id) return;
+    if (confirm("Tem certeza que deseja excluir DEIFINITIVAMENTE este produto? Todas as informações de estoque serão perdidas.")) {
+      try {
+        await deleteDoc(doc(db, 'produtos', form.produto_id));
+        setModalOpen(null);
+        await handleAction('refresh', {});
+      } catch (e: any) {
+        alert("Erro ao excluir: " + e.message);
+      }
+    }
+  };
+
   const submit = async () => {
     if (!modalOpen) return;
     try {
@@ -871,6 +1005,15 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
           created_at: new Date().toISOString()
         };
         await addDoc(collection(db, 'produtos'), newProd);
+      } else if (modalOpen === 'edit_produto') {
+        const prodRef = doc(db, 'produtos', form.produto_id);
+        await setDoc(prodRef, {
+          codigo: form.codigo,
+          nome: form.nome,
+          categoria: form.categoria,
+          preco: form.preco,
+          estoque_minimo: form.estoque_minimo,
+        }, { merge: true });
       } else if (modalOpen === 'apontamento') {
         // Baixa in Origem
         await handleAction('estoque/saida', {
@@ -933,6 +1076,10 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
             <button onClick={() => setModalOpen('produto')} className="btn-secondary flex items-center gap-2 border-emerald-100 text-emerald-700 hover:bg-emerald-50">
               <Plus size={16} /> Cadastrar Produto
             </button>
+            <input type="file" id="excel-upload" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleExcelUpload} disabled={uploadingExcel} />
+            <label htmlFor="excel-upload" className={`btn-secondary flex items-center gap-2 border-blue-100 text-blue-700 cursor-pointer ${uploadingExcel ? 'opacity-50' : 'hover:bg-blue-50'}`}>
+              <FileUp size={16} /> {uploadingExcel ? 'Importando...' : 'Importar Planilha'}
+            </label>
             <div className="w-px h-8 bg-slate-100 mx-2 hidden md:block"></div>
             <button onClick={() => { setModalOpen('entrada'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-secondary flex items-center gap-2">
               <Plus size={16} /> Entrada
@@ -970,7 +1117,16 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
                 const qty = selectedTenantId === 'all' ? getGlobalStock(p.id) : getStockQty(p.id, selectedTenantId);
                 const isCrit = qty < p.estoque_minimo;
                 return (
-                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                  <tr 
+                    key={p.id} 
+                    onClick={() => {
+                      if (userProfile?.role === 'SUPER_ADMIN') {
+                        setForm(f => ({ ...f, produto_id: p.id, codigo: p.codigo || '', nome: p.nome, categoria: p.categoria, preco: p.preco, estoque_minimo: p.estoque_minimo }));
+                        setModalOpen('edit_produto');
+                      }
+                    }}
+                    className={`transition-colors ${userProfile?.role === 'SUPER_ADMIN' ? 'cursor-pointer hover:bg-slate-100' : 'hover:bg-slate-50'}`}
+                  >
                     <td className="font-mono text-xs text-slate-400">{p.codigo || `#${p.id.slice(0,6)}`}</td>
                     <td className="font-bold text-slate-800">{p.nome}</td>
                     <td><span className="text-[10px] bg-slate-100 px-2 py-1 rounded font-bold text-slate-500 uppercase">{p.categoria}</span></td>
@@ -1103,11 +1259,12 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
               {modalOpen === 'entrada' ? 'Registrar Entrada' : 
                modalOpen === 'saida' ? 'Registrar Baixa' : 
                modalOpen === 'transferencia' ? 'Transferência entre Lojas' :
-               modalOpen === 'produto' ? 'Cadastrar Novo Produto' : 'Baixa e Apontamento'}
+               modalOpen === 'produto' ? 'Cadastrar Novo Produto' :
+               modalOpen === 'edit_produto' ? 'Editar Produto' : 'Baixa e Apontamento'}
             </h3>
             
             <div className="space-y-4">
-              {modalOpen === 'produto' ? (
+              {modalOpen === 'produto' || modalOpen === 'edit_produto' ? (
                 <>
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Código Interno</label>
@@ -1237,10 +1394,13 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
 
             <div className="flex gap-2 mt-8">
               <button onClick={() => setModalOpen(null)} className="flex-1 btn-secondary">Cancelar</button>
+              {modalOpen === 'edit_produto' && (
+                <button onClick={handleDeleteProduct} className="flex-1 bg-red-50 text-red-600 font-bold rounded-xl text-sm border border-red-100 hover:bg-red-100 transition-colors">Excluir</button>
+              )}
               <button 
                 onClick={submit} 
                 className="flex-1 btn-primary"
-                disabled={modalOpen !== 'produto' && form.quantidade <= 0 && modalOpen !== 'apontamento'}
+                disabled={modalOpen !== 'produto' && modalOpen !== 'edit_produto' && form.quantidade <= 0 && modalOpen !== 'apontamento'}
               >
                 Confirmar
               </button>
