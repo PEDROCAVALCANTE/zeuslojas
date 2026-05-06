@@ -55,7 +55,7 @@ import {
 } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { auth, db } from './lib/firebase';
-import { Tenant, User, Produto, Estoque, Movimentacao, Transacao, Caixa, NotaFiscal } from './lib/app-types';
+import { Tenant, User, Produto, Estoque, Movimentacao, Transacao, Caixa, NotaFiscal } from './types';
 
 export default function ZeusApp() {
   const [activeTab, setActiveTab] = useState('dashboard');
