@@ -1052,6 +1052,7 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
     nome: '',
     categoria: '',
     preco: 0,
+    custo: 0,
     estoque_minimo: 0
   });
 
@@ -1085,6 +1086,7 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
           nome: form.nome,
           categoria: form.categoria,
           preco: form.preco,
+          custo: form.custo,
           estoque_minimo: form.estoque_minimo,
           tenant_id: selectedTenantId === 'all' ? userProfile?.tenant_id || '' : selectedTenantId,
           ativo: true,
@@ -1102,6 +1104,7 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
           nome: form.nome,
           categoria: form.categoria,
           preco: form.preco,
+          custo: form.custo,
           estoque_minimo: form.estoque_minimo,
         }, { merge: true });
       } else if (modalOpen === 'apontamento') {
@@ -1126,7 +1129,7 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
       setModalOpen(null);
       setForm({ 
         produto_id: '', tenant_id: '', tenant_origem: '', tenant_destino: '', quantidade: 0,
-        produto_origem_id: '', produto_destino_id: '', mapped_product_id: '', codigo: '', nome: '', categoria: '', preco: 0, estoque_minimo: 0
+        produto_origem_id: '', produto_destino_id: '', mapped_product_id: '', codigo: '', nome: '', categoria: '', preco: 0, custo: 0, estoque_minimo: 0
       });
       window.location.reload(); 
     } catch (e: any) {
@@ -1219,12 +1222,10 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
                   <tr 
                     key={p.id} 
                     onClick={() => {
-                      if (userProfile?.role === 'SUPER_ADMIN') {
-                        setForm(f => ({ ...f, produto_id: p.id, codigo: p.codigo || '', nome: p.nome, categoria: p.categoria, preco: p.preco, estoque_minimo: p.estoque_minimo }));
+                        setForm(f => ({ ...f, produto_id: p.id, codigo: p.codigo || '', nome: p.nome, categoria: p.categoria, preco: p.preco, custo: (p as any).custo || 0, estoque_minimo: p.estoque_minimo }));
                         setModalOpen('edit_produto');
-                      }
                     }}
-                    className={`transition-colors ${userProfile?.role === 'SUPER_ADMIN' ? 'cursor-pointer hover:bg-slate-100' : 'hover:bg-slate-50'}`}
+                    className={`transition-colors cursor-pointer hover:bg-slate-100`}
                   >
                     <td className="font-mono text-xs text-slate-400">{p.codigo || `#${p.id.slice(0,6)}`}</td>
                     <td className="font-bold text-slate-800">{p.nome}</td>
@@ -1377,13 +1378,17 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Categoria</label>
                     <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" value={form.categoria} onChange={e => setForm({...form, categoria: e.target.value})} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Preço de Custo</label>
+                      <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" value={form.custo} onChange={e => setForm({...form, custo: Number(e.target.value)})} />
+                    </div>
                     <div>
                       <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Preço de Venda</label>
                       <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" value={form.preco} onChange={e => setForm({...form, preco: Number(e.target.value)})} />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Estoque Mínimo</label>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Estoque Min.</label>
                       <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm" value={form.estoque_minimo} onChange={e => setForm({...form, estoque_minimo: Number(e.target.value)})} />
                     </div>
                   </div>
@@ -1938,12 +1943,14 @@ function TenantsManagement({ tenants, onManage }: { tenants: Tenant[], onManage:
 
 
 function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: any, userProfile: any, selectedTenantId: string, onAction: any }) {
+  const isSuper = userProfile?.role === 'SUPER_ADMIN';
+  const currentTenantId = isSuper ? selectedTenantId : userProfile?.tenant_id;
+  
   const [modalOpen, setModalOpen] = useState<'fechar' | 'venda' | null>(null);
   const [cashierForm, setCashierForm] = useState({ 
     total_pix: 0, 
     total_cartao: 0, 
-    total_dinheiro: 0,
-    tenant_id: userProfile?.tenant_id || '' 
+    total_dinheiro: 0
   });
   const [vendaForm, setVendaForm] = useState({
     produto_id: '',
@@ -1951,15 +1958,18 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
     forma_pagamento: 'PIX' as 'PIX' | 'CARTAO' | 'DINHEIRO'
   });
 
-  const isSuper = userProfile?.role === 'SUPER_ADMIN';
-  const currentTenantId = isSuper ? selectedTenantId : userProfile?.tenant_id;
   const caixas = data.caixas.filter((c: any) => c.tenant_id === currentTenantId || currentTenantId === 'all');
 
   const handleSubmitCaixa = async () => {
     try {
+      if (!currentTenantId || currentTenantId === 'all') {
+         alert("Selecione uma loja para fechar o caixa.");
+         return;
+      }
       const total = cashierForm.total_pix + cashierForm.total_cartao + cashierForm.total_dinheiro;
       await addDoc(collection(db, 'caixas'), {
         ...cashierForm,
+        tenant_id: currentTenantId,
         total_vendas: total,
         status: 'FECHADO',
         data: new Date().toISOString().split('T')[0],
@@ -2097,22 +2107,14 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
           <p className="text-slate-500 text-sm font-medium italic">Gestão de vendas, PDV e fechamento diário.</p>
         </div>
         <div className="flex gap-2">
-          {selectedTenantId !== 'all' ? (
             <>
               <button onClick={() => setModalOpen('venda')} className="btn-secondary flex items-center gap-2 border-green-200 text-green-700 hover:bg-green-50">
                 <ShoppingCart size={16} /> Registrar Venda
               </button>
-              {!isSuper && (
-                <button onClick={() => setModalOpen('fechar')} className="btn-primary flex items-center gap-2">
-                  <Plus size={16} /> Fechar Caixa Hoje
-                </button>
-              )}
+              <button onClick={() => setModalOpen('fechar')} className="btn-primary flex items-center gap-2">
+                <Plus size={16} /> Fechar Caixa Hoje
+              </button>
             </>
-          ) : (
-            <div className="text-xs font-medium text-slate-500 italic flex items-center">
-              Selecione uma loja específica para registro de vendas e fechamento.
-            </div>
-          )}
         </div>
       </div>
 
@@ -2351,15 +2353,9 @@ function InvoiceManagement({ data, selectedTenantId, userProfile, onAction }: { 
           <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Entrada de Notas Fiscais</h2>
           <p className="text-slate-500 text-sm font-medium italic">Rastreamento de mercadorias e conversão automática para granel.</p>
         </div>
-        {selectedTenantId !== 'all' ? (
-          <button onClick={() => setModalOpen(true)} className="btn-primary flex items-center gap-2">
-            <Truck size={16} /> Nova Entrada
-          </button>
-        ) : (
-          <div className="text-xs font-medium text-slate-500 italic">
-            Selecione uma loja específica no topo para registrar uma Nota Fiscal.
-          </div>
-        )}
+        <button onClick={() => setModalOpen(true)} className="btn-primary flex items-center gap-2">
+          <Truck size={16} /> Nova Entrada
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
