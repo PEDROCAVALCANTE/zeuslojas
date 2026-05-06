@@ -127,7 +127,7 @@ export default function ZeusApp() {
 
       const [tenants, products, stock, movements, transactions, caixas, notas] = await Promise.all([
         fetchSnap('tenants', tenantsFilter),
-        fetchSnap('produtos'),
+        fetchSnap('produtos', qFilters),
         fetchSnap('estoque', qFilters),
         fetchSnap('movimentacoes', mFilters),
         fetchSnap('transacoes', qFilters),
@@ -282,6 +282,7 @@ export default function ZeusApp() {
             preco,
             estoque_minimo: estoqueMinimo,
             ativo,
+            tenant_id: tenantId,
             created_at: new Date().toISOString()
           });
           ops++;
@@ -569,6 +570,10 @@ export default function ZeusApp() {
     ? data.transactions
     : data.transactions.filter(t => t.tenant_id === selectedTenantId);
 
+  const filteredProducts = selectedTenantId === 'all'
+    ? data.products
+    : data.products.filter(p => p.tenant_id === selectedTenantId || (!p.tenant_id && data.stock.some(s => s.produto_id === p.id && s.tenant_id === selectedTenantId)));
+
   // Stats calculation
   const totalFaturamento = filteredTransactions
     .filter(t => t.tipo === 'RECEITA')
@@ -578,7 +583,7 @@ export default function ZeusApp() {
     .filter(t => t.tipo === 'DESPESA')
     .reduce((acc, t) => acc + (t.valor || 0), 0);
 
-  const productsLowStock = data.products.filter(p => {
+  const productsLowStock = filteredProducts.filter(p => {
     const totalQty = data.stock
       .filter(s => s.produto_id === p.id && (selectedTenantId === 'all' || s.tenant_id === selectedTenantId))
       .reduce((acc, s) => acc + s.quantidade, 0);
@@ -586,6 +591,8 @@ export default function ZeusApp() {
   });
 
   const getProductName = (id: string) => data.products.find(p => p.id === id)?.nome || 'Produto Desconhecido';
+
+  const filteredData = { ...data, products: filteredProducts };
   const getTenantName = (id: string | null) => data.tenants.find(t => t.id === id)?.nome || '-';
 
   return (
@@ -839,7 +846,7 @@ export default function ZeusApp() {
 
               {activeTab === 'estoque' && (
                 <InventoryManagement 
-                  data={data} 
+                  data={filteredData} 
                   selectedTenantId={selectedTenantId} 
                   handleAction={handleAction} 
                   userProfile={userProfile}
@@ -868,7 +875,7 @@ export default function ZeusApp() {
               )}
               {activeTab === 'caixa' && (
                 <CashierView 
-                  data={data} 
+                  data={filteredData} 
                   userProfile={userProfile} 
                   selectedTenantId={selectedTenantId}
                   onAction={() => fetchData()}
@@ -876,12 +883,12 @@ export default function ZeusApp() {
               )}
               {activeTab === 'notas' && (
                 <InvoiceManagement 
-                  data={data} 
+                  data={filteredData} 
                   selectedTenantId={selectedTenantId}
                   onAction={() => fetchData()}
                 />
               )}
-              {activeTab === 'relatorios' && <ReportsView data={data} selectedTenantId={selectedTenantId} />}
+              {activeTab === 'relatorios' && <ReportsView data={filteredData} selectedTenantId={selectedTenantId} />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -1071,9 +1078,14 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
           categoria: form.categoria,
           preco: form.preco,
           estoque_minimo: form.estoque_minimo,
+          tenant_id: selectedTenantId === 'all' ? userProfile?.tenant_id || '' : selectedTenantId,
           ativo: true,
           created_at: new Date().toISOString()
         };
+        if (!newProd.tenant_id) {
+           alert("É necessário selecionar uma loja para cadastrar um produto.");
+           return;
+        }
         await addDoc(collection(db, 'produtos'), newProd);
       } else if (modalOpen === 'edit_produto') {
         const prodRef = doc(db, 'produtos', form.produto_id);

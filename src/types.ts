@@ -24,6 +24,7 @@ export interface Produto {
   categoria: string;
   preco: number;
   estoque_minimo: number;
+  tenant_id?: string;
   ativo: boolean;
   created_at: string;
 }

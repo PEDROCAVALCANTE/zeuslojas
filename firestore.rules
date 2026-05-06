@@ -78,7 +78,8 @@ service cloud.firestore {
              data.preco is number && data.preco >= 0 &&
              data.estoque_minimo is number && data.estoque_minimo >= 0 &&
              data.ativo is bool &&
-             (!('codigo' in data) || (data.codigo is string && data.codigo.size() <= 50));
+             (!('codigo' in data) || (data.codigo is string && data.codigo.size() <= 50)) &&
+             (!('tenant_id' in data) || (data.tenant_id is string && isValidId(data.tenant_id)));
     }
 
     function isValidStock(data) {
@@ -155,10 +156,13 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
-    // Products (Global Catalog)
+    // Products (Tenant-aware Catalog)
     match /produtos/{produtoId} {
       allow read: if isSignedIn();
-      allow create, update: if isSuperAdmin() && isValidProduct(incoming());
+      allow create, update: if isValidProduct(incoming()) && (
+        isSuperAdmin() || 
+        ('tenant_id' in incoming() && incoming().tenant_id == getTenantId())
+      );
       allow delete: if isSuperAdmin();
     }
 
