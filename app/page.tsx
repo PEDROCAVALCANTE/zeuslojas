@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, 
   Package, 
@@ -27,6 +27,7 @@ import {
   FileUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import Image from 'next/image';
 import { 
   signInWithEmailAndPassword,
@@ -1424,6 +1425,26 @@ function FinancialManagement({ transactions, tenants, selectedTenantId, handleAc
     setForm({ valor: 0, descricao: '', categoria: '', tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId });
   };
 
+  const chartData = useMemo(() => {
+    const grouped = transactions.reduce((acc: any, t) => {
+      const date = new Date(t.created_at);
+      const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const friendlyName = date.toLocaleDateString('pt-br', { month: 'short', year: 'numeric' });
+      
+      if (!acc[yearMonth]) {
+        acc[yearMonth] = { sortKey: yearMonth, name: friendlyName.toUpperCase(), ['Receitas']: 0, ['Despesas']: 0 };
+      }
+      if (t.tipo === 'RECEITA') {
+        acc[yearMonth]['Receitas'] += t.valor;
+      } else if (t.tipo === 'DESPESA') {
+        acc[yearMonth]['Despesas'] += t.valor;
+      }
+      return acc;
+    }, {});
+    
+    return Object.values(grouped).sort((a: any, b: any) => a.sortKey.localeCompare(b.sortKey));
+  }, [transactions]);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -1440,6 +1461,25 @@ function FinancialManagement({ transactions, tenants, selectedTenantId, handleAc
           </button>
         </div>
       </div>
+
+      {chartData.length > 0 && (
+        <div className="kpi-card">
+          <h3 className="font-bold text-slate-800 mb-4 uppercase text-xs tracking-widest text-slate-400 italic">Comparativo Mensal</h3>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} dx={-10} tickFormatter={(val) => `R$ ${val}`} />
+                <Tooltip cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(val: number) => `R$ ${val.toLocaleString('pt-br', {minimumFractionDigits: 2})}`} />
+                <Legend wrapperStyle={{ paddingTop: '20px' }} iconType="circle" />
+                <Bar dataKey="Receitas" fill="#22C55E" radius={[4, 4, 0, 0]} maxBarSize={50} />
+                <Bar dataKey="Despesas" fill="#EF4444" radius={[4, 4, 0, 0]} maxBarSize={50} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       <div className="kpi-card !p-0 overflow-hidden shadow-md border-slate-200">
         <table className="data-table">
