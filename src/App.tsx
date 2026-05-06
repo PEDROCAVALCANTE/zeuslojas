@@ -49,6 +49,7 @@ import {
   deleteDoc,
   query,
   where,
+  or,
   runTransaction,
   writeBatch
 } from 'firebase/firestore';
@@ -82,24 +83,43 @@ export default function ZeusApp() {
     
     setLoading(true);
     try {
-      const fetchSnap = async (coll: string) => {
+      const fetchSnap = async (collPath: string, whereFilters: any[] = []) => {
         try {
-          const snap = await getDocs(collection(db, coll));
+          const q = whereFilters.length > 0 
+            ? query(collection(db, collPath), ...whereFilters) 
+            : collection(db, collPath);
+          const snap = await getDocs(q);
           return snap.docs.map(d => ({ id: d.id, ...d.data() }));
         } catch (e: any) {
-          console.warn(`Error fetching ${coll}:`, e.message);
+          console.warn(`Error fetching ${collPath}:`, e.message);
           return []; // Return empty array if permission denied for one collection
         }
       };
 
+      const qFilters = [];
+      const mFilters = [];
+      if (userProfile && userProfile.role !== 'SUPER_ADMIN') {
+        const tId = userProfile.tenant_id;
+        if (tId) {
+          qFilters.push(where('tenant_id', '==', tId));
+          // Note: Movements requires (tenant_origem == tId OR tenant_destino == tId) which needs OR queries in Firestore
+          mFilters.push(
+            or(
+              where('tenant_origem', '==', tId),
+              where('tenant_destino', '==', tId)
+            )
+          );
+        }
+      }
+
       const [tenants, products, stock, movements, transactions, caixas, notas] = await Promise.all([
-        fetchSnap('tenants'),
+        fetchSnap('tenants', userProfile?.role !== 'SUPER_ADMIN' ? [where('id', '==', userProfile?.tenant_id)] : []),
         fetchSnap('produtos'),
-        fetchSnap('estoque'),
-        fetchSnap('movimentacoes'),
-        fetchSnap('transacoes'),
-        fetchSnap('caixas'),
-        fetchSnap('notas_fiscais')
+        fetchSnap('estoque', qFilters),
+        fetchSnap('movimentacoes', mFilters),
+        fetchSnap('transacoes', qFilters),
+        fetchSnap('caixas', qFilters),
+        fetchSnap('notas_fiscais', qFilters)
       ]);
 
       setData({
@@ -202,14 +222,17 @@ export default function ZeusApp() {
         const codigo = String(row['Codigo'] || row['codigo'] || '').trim();
         const nome = String(row['Produto'] || row['produto'] || row['Nome'] || '').trim();
         const categoria = String(row['Categoria'] || row['categoria'] || 'Diversos').trim();
-        const preco = parseFloat(row['Preco'] || row['preco'] || row['Preço'] || '0');
-        const estoqueMinimo = parseInt(row['EstoqueMinimo'] || row['estoque_minimo'] || '5', 10);
+        const rawPreco = String(row['Preco'] || row['preco'] || row['Preço'] || '0').replace(/R\$\s*/gi, '').replace(',', '.');
+        const preco = isNaN(parseFloat(rawPreco)) ? 0 : parseFloat(rawPreco);
+        const rawEstoqueMin = String(row['EstoqueMinimo'] || row['estoque_minimo'] || '5');
+        const estoqueMinimo = isNaN(parseInt(rawEstoqueMin, 10)) ? 5 : parseInt(rawEstoqueMin, 10);
         let tenantId = String(row['LojaID'] || row['loja_id'] || row['tenant_id'] || '').trim();
         if (!tenantId && selectedTenantId !== 'all') {
           tenantId = selectedTenantId;
         }
 
-        const quantidade = parseInt(row['Quantidade'] || row['quantidade'] || '0', 10);
+        const rawQuant = String(row['Quantidade'] || row['quantidade'] || '0');
+        const quantidade = isNaN(parseInt(rawQuant, 10)) ? 0 : parseInt(rawQuant, 10);
         const ativo = row['Ativo'] !== undefined ? Boolean(row['Ativo']) : true;
 
         if (!nome) continue;

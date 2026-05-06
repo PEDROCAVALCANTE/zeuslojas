@@ -172,7 +172,8 @@ service cloud.firestore {
 
     // Movements
     match /movimentacoes/{movId} {
-      allow read: if (resource.data.tenant_origem != null && belongsToTenant(resource.data.tenant_origem)) || 
+      allow read: if isSuperAdmin() || 
+                     (resource.data.tenant_origem != null && belongsToTenant(resource.data.tenant_origem)) || 
                      (resource.data.tenant_destino != null && belongsToTenant(resource.data.tenant_destino));
       allow create: if isValidMovement(incoming()) && (
         (incoming().tipo == 'ENTRADA' && belongsToTenant(incoming().tenant_destino)) ||
