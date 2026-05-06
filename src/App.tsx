@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import Image from 'next/image';
+
 import { 
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -188,6 +188,7 @@ export default function ZeusApp() {
 
       if (json.length === 0) {
         alert("A planilha está vazia.");
+        setUploadingExcel(false);
         return;
       }
 
@@ -214,7 +215,7 @@ export default function ZeusApp() {
         if (!nome) continue;
 
         if (!tenantId) {
-          throw new Error(`Linha com produto "${nome}" sem LojaID. Selecione uma loja específica no filtro superior antes de importar, ou adicione a coluna LojaID na planilha.`);
+          throw new Error(`O produto "${nome}" está sem a coluna LojaID na planilha. Por favor, selecione uma loja específica no filtro "Selecionar Tenant" acima antes de importar, ou adicione a coluna 'LojaID' na sua planilha.`);
         }
 
         let produtoId = '';
@@ -374,6 +375,17 @@ export default function ZeusApp() {
            }
         });
         await fetchData();
+      } else if (endpoint === 'financeiro/receita' || endpoint === 'financeiro/despesa') {
+        await addDoc(collection(db, 'transacoes'), {
+          tipo: endpoint === 'financeiro/receita' ? 'RECEITA' : 'DESPESA',
+          valor: payload.valor,
+          tenant_id: payload.tenant_id,
+          descricao: payload.descricao,
+          categoria: payload.categoria,
+          criado_por: auth.currentUser?.uid,
+          created_at: new Date().toISOString()
+        });
+        await fetchData();
       } else {
         const res = await fetch(`/api/${endpoint}`, {
           method: 'POST',
@@ -413,8 +425,8 @@ export default function ZeusApp() {
           className="bg-white rounded-2xl p-8 w-full max-w-sm text-center shadow-2xl"
         >
             <div className="flex items-center justify-center gap-4 mb-6">
-               <Image src="https://iili.io/B6fUR6l.png" alt="Zeus CP e Ferragista" width={100} height={40} className="object-contain h-12 w-auto" />
-               <Image src="https://iili.io/B6fUunf.png" alt="Zeus Atacarejo" width={100} height={40} className="object-contain h-12 w-auto" />
+               <img src="https://iili.io/B6fUR6l.png" alt="Zeus CP e Ferragista" width={100} height={40} className="object-contain h-12 w-auto" />
+               <img src="https://iili.io/B6fUunf.png" alt="Zeus Atacarejo" width={100} height={40} className="object-contain h-12 w-auto" />
             </div>
             <h1 className="text-xl font-black text-slate-900 tracking-tighter mb-2">SISTEMA ZEUS</h1>
           <p className="text-slate-500 text-xs mb-6 font-medium">Faça login para acessar o sistema.</p>
@@ -1715,7 +1727,7 @@ function TenantsManagement({ tenants, onManage }: { tenants: Tenant[], onManage:
               <div className="flex justify-between items-start mb-4">
                 <div className="h-10 flex items-center">
                   {logoUrl ? (
-                    <Image src={logoUrl} alt={t.nome} width={100} height={40} className="object-contain h-10 w-auto" />
+                    <img src={logoUrl} alt={t.nome} width={100} height={40} className="object-contain h-10 w-auto" />
                   ) : (
                     <Store size={24} className="text-sky-400" />
                   )}
