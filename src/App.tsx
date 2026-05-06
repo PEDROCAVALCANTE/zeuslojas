@@ -598,7 +598,7 @@ export default function ZeusApp() {
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar - Modern White Balance */}
-      <aside className="w-52 bg-white text-slate-600 flex flex-col border-r border-slate-200 flex-shrink-0 shadow-sm z-20">
+      <aside className="w-64 bg-white text-slate-600 flex flex-col border-r border-slate-200 flex-shrink-0 shadow-sm z-20">
         <div className="p-6">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-sky-400 rounded-lg flex items-center justify-center font-black text-white text-lg shadow-lg shadow-blue-200">Z</div>
@@ -885,6 +885,7 @@ export default function ZeusApp() {
                 <InvoiceManagement 
                   data={filteredData} 
                   selectedTenantId={selectedTenantId}
+                  userProfile={userProfile}
                   onAction={() => fetchData()}
                 />
               )}
@@ -902,12 +903,19 @@ function NavItem({ icon, label, active, onClick, activeColor }: { icon: React.Re
   return (
     <button 
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-sm font-bold cursor-pointer group ${
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-bold cursor-pointer group relative overflow-hidden ${
         active 
-          ? `bg-slate-100 ${activeColor} shadow-sm shadow-slate-200/50` 
-          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+          ? `bg-slate-100 ${activeColor} shadow-sm shadow-slate-200/50 outline-none` 
+          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 outline-none'
       }`}
     >
+      {active && (
+        <motion.div 
+          layoutId="activeTabIndicator" 
+          className="absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full bg-current" 
+          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        />
+      )}
       <div className={`transition-transform duration-300 ${active ? 'scale-110' : 'group-hover:scale-110'}`}>
         {icon}
       </div>
@@ -2217,7 +2225,7 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
   );
 }
 
-function InvoiceManagement({ data, selectedTenantId, onAction }: { data: any, selectedTenantId: string, onAction: any }) {
+function InvoiceManagement({ data, selectedTenantId, userProfile, onAction }: { data: any, selectedTenantId: string, userProfile: User | null, onAction: any }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
     numero_nota: '',
@@ -2363,7 +2371,7 @@ function InvoiceManagement({ data, selectedTenantId, onAction }: { data: any, se
                    <h3 className="text-lg font-black text-slate-900">{n.fornecedor}</h3>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  {selectedTenantId !== 'all' && (
+                  {selectedTenantId !== 'all' && userProfile?.role === 'SUPER_ADMIN' && (
                     <button onClick={() => handleDeleteNota(n.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-1 rounded-md transition-colors" title="Excluir Nota">
                       <Trash2 size={14} />
                     </button>
