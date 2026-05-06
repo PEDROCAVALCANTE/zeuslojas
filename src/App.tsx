@@ -219,26 +219,26 @@ export default function ZeusApp() {
       let count = 0;
 
       for (const row of json) {
-        const codigo = String(row['Codigo'] || row['codigo'] || '').trim();
-        const nome = String(row['Produto'] || row['produto'] || row['Nome'] || '').trim();
-        const categoria = String(row['Categoria'] || row['categoria'] || 'Diversos').trim();
-        const rawPreco = String(row['Preco'] || row['preco'] || row['Preço'] || '0').replace(/R\$\s*/gi, '').replace(',', '.');
+        const codigo = String(row['Codigo'] || row['codigo'] || row['Código'] || row['Cod'] || row['código'] || row['SKU'] || row['sku'] || '').trim();
+        const nome = String(row['Produto'] || row['produto'] || row['Nome'] || row['nome'] || row['Descricao'] || row['Descrição'] || row['descricao'] || row['descrição'] || '').trim();
+        const categoria = String(row['Categoria'] || row['categoria'] || row['Setor'] || row['setor'] || row['Grupo'] || row['grupo'] || 'Diversos').trim();
+        const rawPreco = String(row['Preco'] || row['preco'] || row['Preço'] || row['preço'] || row['Valor'] || row['valor'] || row['Custo'] || row['custo'] || '0').replace(/R\$\s*/gi, '').replace(',', '.');
         const preco = isNaN(parseFloat(rawPreco)) ? 0 : parseFloat(rawPreco);
-        const rawEstoqueMin = String(row['EstoqueMinimo'] || row['estoque_minimo'] || '5');
+        const rawEstoqueMin = String(row['EstoqueMinimo'] || row['estoque_minimo'] || row['Minimo'] || row['Min'] || row['Estoque minimo'] || row['estoque minimo'] || '5');
         const estoqueMinimo = isNaN(parseInt(rawEstoqueMin, 10)) ? 5 : parseInt(rawEstoqueMin, 10);
-        let tenantId = String(row['LojaID'] || row['loja_id'] || row['tenant_id'] || '').trim();
+        let tenantId = String(row['LojaID'] || row['loja_id'] || row['tenant_id'] || row['LojaId'] || row['Loja'] || row['loja'] || row['Filial'] || row['filial'] || '').trim();
         if (!tenantId && selectedTenantId !== 'all') {
           tenantId = selectedTenantId;
         }
 
-        const rawQuant = String(row['Quantidade'] || row['quantidade'] || '0');
+        const rawQuant = String(row['Quantidade'] || row['quantidade'] || row['Qtd'] || row['qtd'] || row['Estoque'] || row['estoque'] || row['Saldo'] || row['saldo'] || '0');
         const quantidade = isNaN(parseInt(rawQuant, 10)) ? 0 : parseInt(rawQuant, 10);
         const ativo = row['Ativo'] !== undefined ? Boolean(row['Ativo']) : true;
 
         if (!nome) continue;
 
         if (!tenantId) {
-          throw new Error(`O produto "${nome}" está sem a coluna LojaID na planilha. Por favor, selecione uma loja específica no filtro "Selecionar Tenant" acima antes de importar, ou adicione a coluna 'LojaID' na sua planilha.`);
+          throw new Error(`O produto "${nome}" está sem a coluna de loja na planilha. Por favor, selecione uma loja específica no filtro "Selecionar Loja" acima antes de importar, ou adicione uma coluna 'Loja' na sua planilha.`);
         }
 
         let produtoId = '';
