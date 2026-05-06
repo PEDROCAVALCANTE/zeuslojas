@@ -203,11 +203,19 @@ export default function ZeusApp() {
         const categoria = String(row['Categoria'] || row['categoria'] || 'Diversos').trim();
         const preco = parseFloat(row['Preco'] || row['preco'] || row['Preço'] || '0');
         const estoqueMinimo = parseInt(row['EstoqueMinimo'] || row['estoque_minimo'] || '5', 10);
-        const tenantId = String(row['LojaID'] || row['loja_id'] || row['tenant_id'] || '').trim();
+        let tenantId = String(row['LojaID'] || row['loja_id'] || row['tenant_id'] || '').trim();
+        if (!tenantId && selectedTenantId !== 'all') {
+          tenantId = selectedTenantId;
+        }
+
         const quantidade = parseInt(row['Quantidade'] || row['quantidade'] || '0', 10);
         const ativo = row['Ativo'] !== undefined ? Boolean(row['Ativo']) : true;
 
-        if (!nome || !tenantId) continue;
+        if (!nome) continue;
+
+        if (!tenantId) {
+          throw new Error(`Linha com produto "${nome}" sem LojaID. Selecione uma loja específica no filtro superior antes de importar, ou adicione a coluna LojaID na planilha.`);
+        }
 
         let produtoId = '';
         if (data?.products) {
@@ -1471,7 +1479,7 @@ function FinancialManagement({ transactions, tenants, selectedTenantId, handleAc
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} dy={10} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} dx={-10} tickFormatter={(val) => `R$ ${val}`} />
-                <Tooltip cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(val: number) => `R$ ${val.toLocaleString('pt-br', {minimumFractionDigits: 2})}`} />
+                <Tooltip cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(val: any) => `R$ ${Number(val).toLocaleString('pt-br', {minimumFractionDigits: 2})}`} />
                 <Legend wrapperStyle={{ paddingTop: '20px' }} iconType="circle" />
                 <Bar dataKey="Receitas" fill="#22C55E" radius={[4, 4, 0, 0]} maxBarSize={50} />
                 <Bar dataKey="Despesas" fill="#EF4444" radius={[4, 4, 0, 0]} maxBarSize={50} />

@@ -36,10 +36,11 @@ service cloud.firestore {
     }
 
     // Role-based helpers
-    // Bootstrapped Admin: baraodaserra@hotmail.com
+    // Bootstrapped Admin: baraodaserra@hotmail.com or angraanjossilva@gmail.com
     function isSuperAdmin() {
       return isSignedIn() && (
         request.auth.token.email == 'baraodaserra@hotmail.com' ||
+        request.auth.token.email == 'angraanjossilva@gmail.com' ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getProfile().role == 'SUPER_ADMIN')
       );
     }
