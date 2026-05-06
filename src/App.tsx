@@ -50,6 +50,7 @@ import {
   query,
   where,
   or,
+  documentId,
   runTransaction,
   writeBatch
 } from 'firebase/firestore';
@@ -112,8 +113,18 @@ export default function ZeusApp() {
         }
       }
 
+      let tenantsFilter: any[] = [];
+      if (userProfile && userProfile.role !== 'SUPER_ADMIN') {
+        if (userProfile.tenant_id) {
+          tenantsFilter = [where(documentId(), '==', userProfile.tenant_id)];
+        } else {
+          // Force an empty result if an ordinary user has no tenant assigned
+          tenantsFilter = [where(documentId(), '==', 'invalid_tenant')];
+        }
+      }
+
       const [tenants, products, stock, movements, transactions, caixas, notas] = await Promise.all([
-        fetchSnap('tenants', userProfile?.role !== 'SUPER_ADMIN' ? [where('id', '==', userProfile?.tenant_id)] : []),
+        fetchSnap('tenants', tenantsFilter),
         fetchSnap('produtos'),
         fetchSnap('estoque', qFilters),
         fetchSnap('movimentacoes', mFilters),
