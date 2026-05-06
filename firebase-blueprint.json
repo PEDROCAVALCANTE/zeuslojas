@@ -35,7 +35,7 @@
         "categoria": { "type": "string" },
         "preco": { "type": "number" },
         "estoque_minimo": { "type": "number" },
-        "ativo": { "type": "boolean" },
+        "ativo": { "type": "boolean", "default": true },
         "created_at": { "type": "string", "format": "date-time" }
       },
       "required": ["nome", "categoria", "preco", "ativo", "estoque_minimo"]
