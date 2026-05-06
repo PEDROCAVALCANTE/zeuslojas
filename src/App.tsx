@@ -99,9 +99,11 @@ export default function ZeusApp() {
 
       const qFilters = [];
       const mFilters = [];
+      // Set initial selected tenant for non-super admins
       if (userProfile && userProfile.role !== 'SUPER_ADMIN') {
         const tId = userProfile.tenant_id;
         if (tId) {
+          setSelectedTenantId(tId);
           qFilters.push(where('tenant_id', '==', tId));
           // Note: Movements requires (tenant_origem == tId OR tenant_destino == tId) which needs OR queries in Firestore
           mFilters.push(
@@ -638,15 +640,13 @@ export default function ZeusApp() {
             activeColor="text-violet-600"
             onClick={() => setActiveTab('caixa')} 
           />
-          {userProfile?.role === 'SUPER_ADMIN' && (
-            <NavItem 
-              icon={<FileText size={18} className="text-orange-500" />} 
-              label="Notas Fiscais" 
-              active={activeTab === 'notas'} 
-              activeColor="text-orange-600"
-              onClick={() => setActiveTab('notas')} 
-            />
-          )}
+          <NavItem 
+            icon={<FileText size={18} className="text-orange-500" />} 
+            label="Notas Fiscais" 
+            active={activeTab === 'notas'} 
+            activeColor="text-orange-600"
+            onClick={() => setActiveTab('notas')} 
+          />
           <NavItem 
             icon={<BarChart3 size={18} className="text-rose-500" />} 
             label="Relatórios" 
@@ -680,9 +680,10 @@ export default function ZeusApp() {
               <select 
                 value={selectedTenantId}
                 onChange={(e) => setSelectedTenantId(e.target.value)}
-                className="appearance-none bg-slate-50 border border-slate-200 pl-3 pr-10 py-1.5 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-sky-400 transition-all cursor-pointer min-w-[240px]"
+                disabled={!!userProfile && userProfile.role !== 'SUPER_ADMIN'}
+                className="appearance-none bg-slate-50 border border-slate-200 pl-3 pr-10 py-1.5 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-sky-400 transition-all cursor-pointer min-w-[240px] disabled:opacity-50"
               >
-                <option value="all">Todas as Lojas (Consolidado)</option>
+                {userProfile?.role === 'SUPER_ADMIN' && <option value="all">Todas as Lojas (Consolidado)</option>}
                 {data.tenants.map(t => (
                   <option key={t.id} value={t.id}>{t.nome}</option>
                 ))}
@@ -873,7 +874,7 @@ export default function ZeusApp() {
                   onAction={() => fetchData()}
                 />
               )}
-              {activeTab === 'notas' && userProfile?.role === 'SUPER_ADMIN' && (
+              {activeTab === 'notas' && (
                 <InvoiceManagement 
                   data={data} 
                   selectedTenantId={selectedTenantId}
@@ -1140,31 +1141,40 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
       </div>
 
       <div className="flex flex-wrap gap-3 p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-        {userProfile?.role === 'SUPER_ADMIN' && (
+        {selectedTenantId !== 'all' && (
           <>
-            <button onClick={() => setModalOpen('produto')} className="btn-secondary flex items-center gap-2 border-emerald-100 text-emerald-700 hover:bg-emerald-50">
-              <Plus size={16} /> Cadastrar Produto
+            {userProfile?.role === 'SUPER_ADMIN' && (
+              <>
+                <button onClick={() => setModalOpen('produto')} className="btn-secondary flex items-center gap-2 border-emerald-100 text-emerald-700 hover:bg-emerald-50">
+                  <Plus size={16} /> Cadastrar Produto
+                </button>
+                <input type="file" id="excel-upload" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleExcelUpload} disabled={uploadingExcel} />
+                <label htmlFor="excel-upload" className={`btn-secondary flex items-center gap-2 border-blue-100 text-blue-700 cursor-pointer ${uploadingExcel ? 'opacity-50' : 'hover:bg-blue-50'}`}>
+                  <FileUp size={16} /> {uploadingExcel ? 'Importando...' : 'Importar Planilha'}
+                </label>
+                <div className="w-px h-8 bg-slate-100 mx-2 hidden md:block"></div>
+                <button onClick={() => { setModalOpen('entrada'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId })) }} className="btn-secondary flex items-center gap-2">
+                  <Plus size={16} /> Entrada
+                </button>
+              </>
+            )}
+            <button onClick={() => { setModalOpen('saida'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId })) }} className="btn-secondary flex items-center gap-2">
+              <AlertTriangle size={16} className="text-amber-500" /> Baixa
             </button>
-            <input type="file" id="excel-upload" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleExcelUpload} disabled={uploadingExcel} />
-            <label htmlFor="excel-upload" className={`btn-secondary flex items-center gap-2 border-blue-100 text-blue-700 cursor-pointer ${uploadingExcel ? 'opacity-50' : 'hover:bg-blue-50'}`}>
-              <FileUp size={16} /> {uploadingExcel ? 'Importando...' : 'Importar Planilha'}
-            </label>
-            <div className="w-px h-8 bg-slate-100 mx-2 hidden md:block"></div>
-            <button onClick={() => { setModalOpen('entrada'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-secondary flex items-center gap-2">
-              <Plus size={16} /> Entrada
+            <button onClick={() => { setModalOpen('apontamento'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId })) }} className="btn-secondary flex items-center gap-2 text-violet-600 border-violet-100">
+              <ScanLine size={16} /> Apontamento
             </button>
+            {userProfile?.role === 'SUPER_ADMIN' && (
+              <button onClick={() => { setModalOpen('transferencia'); setForm((f: any) => ({ ...f, tenant_origem: selectedTenantId })) }} className="btn-primary flex items-center gap-2">
+                <ArrowRightLeft size={16} /> Transferência
+              </button>
+            )}
           </>
         )}
-        <button onClick={() => { setModalOpen('saida'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-secondary flex items-center gap-2">
-          <AlertTriangle size={16} className="text-amber-500" /> Baixa
-        </button>
-        <button onClick={() => { setModalOpen('apontamento'); setForm((f: any) => ({ ...f, tenant_id: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-secondary flex items-center gap-2 text-violet-600 border-violet-100">
-          <ScanLine size={16} /> Apontamento
-        </button>
-        {userProfile?.role === 'SUPER_ADMIN' && (
-          <button onClick={() => { setModalOpen('transferencia'); setForm((f: any) => ({ ...f, tenant_origem: selectedTenantId === 'all' ? '' : selectedTenantId })) }} className="btn-primary flex items-center gap-2">
-            <ArrowRightLeft size={16} /> Transferência
-          </button>
+        {selectedTenantId === 'all' && (
+          <div className="text-xs font-medium text-slate-500 flex items-center italic py-2">
+            Selecione uma loja específica no topo para realizar movimentações e operações.
+          </div>
         )}
       </div>
 
@@ -1520,12 +1530,20 @@ function FinancialManagement({ transactions, tenants, selectedTenantId, handleAc
           <p className="text-slate-500 text-sm font-medium">Controle centralizado de receitas e despesas por unidade.</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setModalOpen('despesa')} className="btn-secondary text-red-600 border-red-100 hover:bg-red-50 flex items-center gap-2">
-            <TrendingUp className="rotate-180" size={16} /> Lançar Despesa
-          </button>
-          <button onClick={() => setModalOpen('receita')} className="btn-primary flex items-center gap-2">
-            <Plus size={16} /> Lançar Receita
-          </button>
+          {selectedTenantId !== 'all' ? (
+            <>
+              <button onClick={() => setModalOpen('despesa')} className="btn-secondary text-red-600 border-red-100 hover:bg-red-50 flex items-center gap-2">
+                <TrendingUp className="rotate-180" size={16} /> Lançar Despesa
+              </button>
+              <button onClick={() => setModalOpen('receita')} className="btn-primary flex items-center gap-2">
+                <Plus size={16} /> Lançar Receita
+              </button>
+            </>
+          ) : (
+            <div className="text-xs font-medium text-slate-500 flex items-center italic">
+              Selecione uma loja específica no topo para criar lançamentos.
+            </div>
+          )}
         </div>
       </div>
 
@@ -2059,13 +2077,21 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
           <p className="text-slate-500 text-sm font-medium italic">Gestão de vendas, PDV e fechamento diário.</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setModalOpen('venda')} className="btn-secondary flex items-center gap-2 border-green-200 text-green-700 hover:bg-green-50">
-            <ShoppingCart size={16} /> Registrar Venda
-          </button>
-          {!isSuper && (
-            <button onClick={() => setModalOpen('fechar')} className="btn-primary flex items-center gap-2">
-              <Plus size={16} /> Fechar Caixa Hoje
-            </button>
+          {selectedTenantId !== 'all' ? (
+            <>
+              <button onClick={() => setModalOpen('venda')} className="btn-secondary flex items-center gap-2 border-green-200 text-green-700 hover:bg-green-50">
+                <ShoppingCart size={16} /> Registrar Venda
+              </button>
+              {!isSuper && (
+                <button onClick={() => setModalOpen('fechar')} className="btn-primary flex items-center gap-2">
+                  <Plus size={16} /> Fechar Caixa Hoje
+                </button>
+              )}
+            </>
+          ) : (
+            <div className="text-xs font-medium text-slate-500 italic flex items-center">
+              Selecione uma loja específica para registro de vendas e fechamento.
+            </div>
           )}
         </div>
       </div>
@@ -2305,9 +2331,15 @@ function InvoiceManagement({ data, selectedTenantId, onAction }: { data: any, se
           <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Entrada de Notas Fiscais</h2>
           <p className="text-slate-500 text-sm font-medium italic">Rastreamento de mercadorias e conversão automática para granel.</p>
         </div>
-        <button onClick={() => setModalOpen(true)} className="btn-primary flex items-center gap-2">
-          <Truck size={16} /> Nova Entrada
-        </button>
+        {selectedTenantId !== 'all' ? (
+          <button onClick={() => setModalOpen(true)} className="btn-primary flex items-center gap-2">
+            <Truck size={16} /> Nova Entrada
+          </button>
+        ) : (
+          <div className="text-xs font-medium text-slate-500 italic">
+            Selecione uma loja específica no topo para registrar uma Nota Fiscal.
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2319,9 +2351,11 @@ function InvoiceManagement({ data, selectedTenantId, onAction }: { data: any, se
                    <h3 className="text-lg font-black text-slate-900">{n.fornecedor}</h3>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <button onClick={() => handleDeleteNota(n.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-1 rounded-md transition-colors" title="Excluir Nota">
-                    <Trash2 size={14} />
-                  </button>
+                  {selectedTenantId !== 'all' && (
+                    <button onClick={() => handleDeleteNota(n.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-1 rounded-md transition-colors" title="Excluir Nota">
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                   {n.rastreavel && (
                     <span className="flex items-center gap-1 text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded-full uppercase italic">
                       <ScanLine size={10} /> Rastreável
