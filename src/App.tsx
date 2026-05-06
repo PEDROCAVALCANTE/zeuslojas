@@ -216,24 +216,30 @@ export default function ZeusApp() {
       if (!criado_por) throw new Error("Usuário não autenticado");
 
       let batch = writeBatch(db);
+      let ops = 0;
       let count = 0;
 
-      for (const row of json) {
-        const codigo = String(row['Codigo'] || row['codigo'] || row['Código'] || row['Cod'] || row['código'] || row['SKU'] || row['sku'] || '').trim();
-        const nome = String(row['Produto'] || row['produto'] || row['Nome'] || row['nome'] || row['Descricao'] || row['Descrição'] || row['descricao'] || row['descrição'] || '').trim();
-        const categoria = String(row['Categoria'] || row['categoria'] || row['Setor'] || row['setor'] || row['Grupo'] || row['grupo'] || 'Diversos').trim();
-        const rawPreco = String(row['Preco'] || row['preco'] || row['Preço'] || row['preço'] || row['Valor'] || row['valor'] || row['Custo'] || row['custo'] || '0').replace(/R\$\s*/gi, '').replace(',', '.');
+      for (const rawRow of json) {
+        const row: any = {};
+        for (const k in rawRow) {
+          row[k.trim().toLowerCase()] = rawRow[k];
+        }
+
+        const codigo = String(row['codigo'] || row['código'] || row['cod'] || row['sku'] || '').trim();
+        const nome = String(row['produto'] || row['nome'] || row['descricao'] || row['descrição'] || row['item'] || '').trim();
+        const categoria = String(row['categoria'] || row['setor'] || row['grupo'] || 'Diversos').trim();
+        const rawPreco = String(row['preco'] || row['preço'] || row['valor'] || row['custo'] || '0').replace(/R\$\s*/gi, '').replace(',', '.');
         const preco = isNaN(parseFloat(rawPreco)) ? 0 : parseFloat(rawPreco);
-        const rawEstoqueMin = String(row['EstoqueMinimo'] || row['estoque_minimo'] || row['Minimo'] || row['Min'] || row['Estoque minimo'] || row['estoque minimo'] || '5');
+        const rawEstoqueMin = String(row['estoqueminimo'] || row['estoque_minimo'] || row['estoque minimo'] || row['minimo'] || row['min'] || '5');
         const estoqueMinimo = isNaN(parseInt(rawEstoqueMin, 10)) ? 5 : parseInt(rawEstoqueMin, 10);
-        let tenantId = String(row['LojaID'] || row['loja_id'] || row['tenant_id'] || row['LojaId'] || row['Loja'] || row['loja'] || row['Filial'] || row['filial'] || '').trim();
+        let tenantId = String(row['lojaid'] || row['loja_id'] || row['tenant_id'] || row['loja'] || row['filial'] || '').trim();
         if (!tenantId && selectedTenantId !== 'all') {
           tenantId = selectedTenantId;
         }
 
-        const rawQuant = String(row['Quantidade'] || row['quantidade'] || row['Qtd'] || row['qtd'] || row['Estoque'] || row['estoque'] || row['Saldo'] || row['saldo'] || '0');
+        const rawQuant = String(row['quantidade'] || row['qtd'] || row['estoque'] || row['saldo'] || '0');
         const quantidade = isNaN(parseInt(rawQuant, 10)) ? 0 : parseInt(rawQuant, 10);
-        const ativo = row['Ativo'] !== undefined ? Boolean(row['Ativo']) : true;
+        const ativo = row['ativo'] !== undefined ? Boolean(row['ativo']) : true;
 
         if (!nome) continue;
 
@@ -265,6 +271,7 @@ export default function ZeusApp() {
             ativo,
             created_at: new Date().toISOString()
           });
+          ops++;
         }
         
         if (quantidade !== 0) {
@@ -280,6 +287,7 @@ export default function ZeusApp() {
             quantidade: Math.max(0, newQty),
             updated_at: new Date().toISOString()
           }, { merge: true });
+          ops++;
 
           const movRef = doc(collection(db, 'movimentacoes'));
           batch.set(movRef, {
@@ -291,22 +299,27 @@ export default function ZeusApp() {
             criado_por,
             created_at: new Date().toISOString()
           });
+          ops++;
         }
 
         count++;
-        if (count >= 400) {
+        if (ops >= 450) {
           await batch.commit();
           batch = writeBatch(db);
-          count = 0;
+          ops = 0;
         }
       }
       
-      if (count > 0) {
+      if (ops > 0) {
         await batch.commit();
       }
 
-      alert("Planilha importada com sucesso!");
-      fetchData();
+      if (count === 0) {
+        alert("Nenhum produto válido encontrado. Verifique se a planilha possui uma coluna 'Nome' ou 'Produto'.");
+      } else {
+        alert(`Planilha importada com sucesso! ${count} registros processados.`);
+        fetchData();
+      }
     } catch (err: any) {
       console.error(err);
       alert("Erro ao importar planilha: " + err.message);
