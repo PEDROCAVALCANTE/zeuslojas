@@ -225,10 +225,10 @@ export default function ZeusApp() {
           row[k.trim().toLowerCase()] = rawRow[k];
         }
 
-        const codigo = String(row['codigo'] || row['código'] || row['cod'] || row['sku'] || '').trim();
-        const nome = String(row['produto'] || row['nome'] || row['descricao'] || row['descrição'] || row['item'] || '').trim();
+        const codigo = String(row['código de b'] || row['codigo de b'] || row['código de barras'] || row['codigo'] || row['código'] || row['cod'] || row['sku'] || row['referênc'] || row['referencia'] || '').trim();
+        const nome = String(row['nome'] || row['produto'] || row['descricao'] || row['descrição'] || row['item'] || '').trim();
         const categoria = String(row['categoria'] || row['setor'] || row['grupo'] || 'Diversos').trim();
-        const rawPreco = String(row['preco'] || row['preço'] || row['valor'] || row['custo'] || '0').replace(/R\$\s*/gi, '').replace(',', '.');
+        const rawPreco = String(row['valor de ve'] || row['valor de venda'] || row['preco'] || row['preço'] || row['valor'] || row['custo'] || '0').replace(/R\$\s*/gi, '').replace(',', '.');
         const preco = isNaN(parseFloat(rawPreco)) ? 0 : parseFloat(rawPreco);
         const rawEstoqueMin = String(row['estoqueminimo'] || row['estoque_minimo'] || row['estoque minimo'] || row['minimo'] || row['min'] || '5');
         const estoqueMinimo = isNaN(parseInt(rawEstoqueMin, 10)) ? 5 : parseInt(rawEstoqueMin, 10);
@@ -237,7 +237,7 @@ export default function ZeusApp() {
           tenantId = selectedTenantId;
         }
 
-        const rawQuant = String(row['quantidade'] || row['qtd'] || row['estoque'] || row['saldo'] || '0');
+        const rawQuant = String(row['estoque'] || row['quantidade'] || row['qtd'] || row['saldo'] || '0');
         const quantidade = isNaN(parseInt(rawQuant, 10)) ? 0 : parseInt(rawQuant, 10);
         const ativo = row['ativo'] !== undefined ? Boolean(row['ativo']) : true;
 
