@@ -1363,8 +1363,11 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-slate-200 max-h-[90vh] overflow-y-auto"
+            className="relative bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-slate-200 max-h-[90vh] overflow-y-auto"
           >
+            <button onClick={() => setModalOpen(null)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-900 transition-colors">
+              <X size={20} />
+            </button>
             <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic border-b pb-4">
               {modalOpen === 'entrada' ? 'Registrar Entrada' : 
                modalOpen === 'saida' ? 'Registrar Baixa' : 
@@ -1495,7 +1498,19 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
                   )}
 
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Quantidade</label>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase block">Quantidade</label>
+                      {(modalOpen === 'saida' || modalOpen === 'transferencia') && form.produto_id && (
+                        <span className="text-[10px] shadow-sm font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full uppercase">
+                          Em Estoque: {
+                            data.stock.find((s: any) => 
+                              s.produto_id === form.produto_id && 
+                              s.tenant_id === (modalOpen === 'transferencia' ? form.tenant_origem : form.tenant_id)
+                            )?.quantidade || 0
+                          }
+                        </span>
+                      )}
+                    </div>
                     <input 
                       type="number" 
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
@@ -1644,8 +1659,11 @@ function FinancialManagement({ transactions, tenants, selectedTenantId, handleAc
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-2xl p-8 w-full max-w-md"
+            className="relative bg-white rounded-2xl p-8 w-full max-w-md"
           >
+            <button onClick={() => setModalOpen(null)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-900 transition-colors">
+              <X size={20} />
+            </button>
             <h3 className={`text-xl font-black mb-6 uppercase italic ${modalOpen === 'receita' ? 'text-green-600' : 'text-red-600'}`}>
               Novo Lançamento: {modalOpen}
             </h3>
@@ -1868,8 +1886,11 @@ function TenantsManagement({ tenants, onManage }: { tenants: Tenant[], onManage:
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="bg-white rounded-2xl p-8 w-full max-w-md"
+              className="relative bg-white rounded-2xl p-8 w-full max-w-md"
             >
+              <button onClick={() => setModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-900 transition-colors">
+                <X size={20} />
+              </button>
               <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic">Criar Nova Unidade</h3>
               
               <div className="space-y-4">
@@ -1904,8 +1925,11 @@ function TenantsManagement({ tenants, onManage }: { tenants: Tenant[], onManage:
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="bg-white rounded-2xl p-8 w-full max-w-md"
+              className="relative bg-white rounded-2xl p-8 w-full max-w-md"
             >
+              <button onClick={() => setUserModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-900 transition-colors">
+                <X size={20} />
+              </button>
               <h3 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tight italic">Novo Acesso</h3>
               <p className="text-sm font-medium text-slate-500 mb-6">Criar usuário admin para <span className="font-bold text-slate-900">{selectedTenantForUser.nome}</span></p>
               
@@ -2168,7 +2192,10 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
 
       {modalOpen === 'fechar' && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
+          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="relative bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <button onClick={() => setModalOpen(null)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-900 transition-colors">
+              <X size={20} />
+            </button>
             <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic">Fechamento de Caixa Diário</h3>
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4">
@@ -2196,7 +2223,10 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
 
       {modalOpen === 'venda' && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
+          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="relative bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <button onClick={() => setModalOpen(null)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-900 transition-colors">
+              <X size={20} />
+            </button>
             <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic">Registrar Venda (PDV)</h3>
             <div className="space-y-4">
               <div>
@@ -2421,7 +2451,10 @@ function InvoiceManagement({ data, selectedTenantId, userProfile, onAction }: { 
 
       {modalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-white rounded-2xl p-8 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="relative bg-white rounded-2xl p-8 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+            <button onClick={() => setModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-900 transition-colors">
+              <X size={20} />
+            </button>
             <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-tight italic border-b pb-4">Registrar Entrada de Mercadoria</h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
