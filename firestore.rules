@@ -117,7 +117,22 @@ service cloud.firestore {
              data.tenant_id is string && isValidId(data.tenant_id);
     }
 
+    function isValidVenda(data) {
+      return data.tenant_id is string && isValidId(data.tenant_id) &&
+             data.produto_id is string && isValidId(data.produto_id) &&
+             data.quantidade is number && data.quantidade > 0 &&
+             data.valor_total is number && data.valor_total >= 0 &&
+             data.forma_pagamento in ['PIX', 'CARTAO', 'DINHEIRO'];
+    }
+
     // --- COLLECTION RULES ---
+
+    // Vendas
+    match /vendas/{vendaId} {
+      allow read: if belongsToTenant(resource.data.tenant_id);
+      allow create: if belongsToTenant(incoming().tenant_id) && isValidVenda(incoming());
+      allow update: if belongsToTenant(incoming().tenant_id) && isValidVenda(incoming());
+    }
 
     // Caixas
     match /caixas/{caixaId} {

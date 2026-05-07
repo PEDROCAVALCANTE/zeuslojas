@@ -71,6 +71,7 @@ export default function ZeusApp() {
     caixas: Caixa[];
     notas: NotaFiscal[];
     users: User[];
+    vendas?: any[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -126,14 +127,15 @@ export default function ZeusApp() {
         }
       }
 
-      const [tenants, products, stock, movements, transactions, caixas, notas] = await Promise.all([
+      const [tenants, products, stock, movements, transactions, caixas, notas, vendas] = await Promise.all([
         fetchSnap('tenants', tenantsFilter),
         fetchSnap('produtos', qFilters),
         fetchSnap('estoque', qFilters),
         fetchSnap('movimentacoes', mFilters),
         fetchSnap('transacoes', qFilters),
         fetchSnap('caixas', qFilters),
-        fetchSnap('notas_fiscais', qFilters)
+        fetchSnap('notas_fiscais', qFilters),
+        fetchSnap('vendas', qFilters)
       ]);
 
       setData({
@@ -144,13 +146,14 @@ export default function ZeusApp() {
         transactions: transactions as any,
         caixas: caixas as any,
         notas: notas as any,
+        vendas: vendas as any,
         users: []
       });
     } catch (err: any) {
       console.error('Critical Fetch Error:', err.message);
       // Fallback to empty non-null data to avoid the error screen if possible
       setData({
-        tenants: [], products: [], stock: [], movements: [], transactions: [], caixas: [], notas: [], users: []
+        tenants: [], products: [], stock: [], movements: [], transactions: [], caixas: [], notas: [], vendas: [], users: []
       });
     } finally {
       setLoading(false);
@@ -1182,6 +1185,34 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
                 <button onClick={() => setModalOpen('produto')} className="btn-secondary flex items-center gap-2 border-emerald-100 text-emerald-700 hover:bg-emerald-50">
                   <Plus size={16} /> Cadastrar Produto
                 </button>
+                <button onClick={async () => {
+                  try {
+                    const racaoProducts = data.products.filter((p: any) => p.categoria?.toLowerCase()?.includes('ração') || p.categoria?.toLowerCase()?.includes('racao'));
+                    if (racaoProducts.length === 0) {
+                      alert("Nenhum produto da categoria ração encontrado.");
+                      return;
+                    }
+                    if (!confirm(`Temos ${racaoProducts.length} produtos de ração. Deseja duplicá-locs adicionando " HG" no nome?`)) return;
+                    
+                    const batch = writeBatch(db);
+                    racaoProducts.forEach((p: any) => {
+                      const newRef = doc(collection(db, 'produtos'));
+                      const { id, created_at, ...restData } = p;
+                      batch.set(newRef, {
+                         ...restData,
+                         nome: restData.nome.trim() + ' HG',
+                         created_at: new Date().toISOString()
+                      });
+                    });
+                    await batch.commit();
+                    alert("Produtos duplicados com sucesso!");
+                    window.location.reload();
+                  } catch(e: any) {
+                    alert(e.message);
+                  }
+                }} className="btn-secondary flex items-center gap-2 border-violet-100 text-violet-700 hover:bg-violet-50">
+                   <Plus size={16} /> Duplicar Rações HG
+                </button>
                 <input type="file" id="excel-upload" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleExcelUpload} disabled={uploadingExcel} />
                 <label htmlFor="excel-upload" className={`btn-secondary flex items-center gap-2 border-blue-100 text-blue-700 cursor-pointer ${uploadingExcel ? 'opacity-50' : 'hover:bg-blue-50'}`}>
                   <FileUp size={16} /> {uploadingExcel ? 'Importando...' : 'Importar Planilha'}
@@ -2016,8 +2047,14 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
          alert("Selecione uma loja para fechar o caixa.");
          return;
       }
+      
+      const pendingVendas = data.vendas ? data.vendas.filter((v: any) => v.tenant_id === currentTenantId && v.caixa_id === null) : [];
       const total = cashierForm.total_pix + cashierForm.total_cartao + cashierForm.total_dinheiro;
-      await addDoc(collection(db, 'caixas'), {
+      
+      const batch = writeBatch(db);
+      const caixaRef = doc(collection(db, 'caixas'));
+
+      batch.set(caixaRef, {
         ...cashierForm,
         tenant_id: currentTenantId,
         total_vendas: total,
@@ -2026,7 +2063,17 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
         criado_por: auth.currentUser?.uid,
         updated_at: new Date().toISOString()
       });
+
+      pendingVendas.forEach((pv: any) => {
+         batch.update(doc(db, 'vendas', pv.id), {
+           caixa_id: caixaRef.id
+         });
+      });
+
+      await batch.commit();
+
       setModalOpen(null);
+      setCashierForm({ total_pix: 0, total_cartao: 0, total_dinheiro: 0 });
       onAction();
     } catch (e: any) {
       alert(e.message);
@@ -2114,15 +2161,16 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
           created_at: now
         });
 
-        // Log Transaction (Receita)
-        const transRef = doc(collection(db, 'transacoes'));
-        transaction.set(transRef, {
-          tipo: 'RECEITA',
-          valor: valorTotal,
+        // Log Venda 
+        const vendaRef = doc(collection(db, 'vendas'));
+        transaction.set(vendaRef, {
           tenant_id: currentTenantId,
-          descricao: `Venda: ${product.nome} (x${vendaForm.quantidade})`,
-          categoria: 'Venda de Mercadoria',
+          produto_id: vendaForm.produto_id,
+          nome_produto: product.nome,
+          quantidade: vendaForm.quantidade,
+          valor_total: valorTotal,
           forma_pagamento: vendaForm.forma_pagamento,
+          caixa_id: null,
           criado_por,
           created_at: now
         });
@@ -2136,13 +2184,35 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
     }
   };
 
-  const handleValidate = async (id: string) => {
+  const handleValidate = async (caixa: any, aprovado: boolean) => {
     try {
-      await setDoc(doc(db, 'caixas', id), { 
-        status: 'VALIDADO', 
-        validado_por: auth.currentUser?.uid,
-        updated_at: new Date().toISOString() 
-      }, { merge: true });
+      if (aprovado) {
+        const batch = writeBatch(db);
+        const cRef = doc(db, 'caixas', caixa.id);
+        batch.update(cRef, { 
+          status: 'VALIDADO', 
+          validado_por: auth.currentUser?.uid,
+          updated_at: new Date().toISOString() 
+        });
+        
+        const now = new Date().toISOString();
+        if (caixa.total_pix > 0) {
+           batch.set(doc(collection(db, 'transacoes')), { tipo: 'RECEITA', valor: caixa.total_pix, tenant_id: caixa.tenant_id, descricao: `Fechamento Caixa - PIX`, categoria: 'Venda de Mercadoria', forma_pagamento: 'PIX', criado_por: auth.currentUser?.uid, created_at: now });
+        }
+        if (caixa.total_cartao > 0) {
+           batch.set(doc(collection(db, 'transacoes')), { tipo: 'RECEITA', valor: caixa.total_cartao, tenant_id: caixa.tenant_id, descricao: `Fechamento Caixa - Cartão`, categoria: 'Venda de Mercadoria', forma_pagamento: 'CARTAO', criado_por: auth.currentUser?.uid, created_at: now });
+        }
+        if (caixa.total_dinheiro > 0) {
+           batch.set(doc(collection(db, 'transacoes')), { tipo: 'RECEITA', valor: caixa.total_dinheiro, tenant_id: caixa.tenant_id, descricao: `Fechamento Caixa - Dinheiro`, categoria: 'Venda de Mercadoria', forma_pagamento: 'DINHEIRO', criado_por: auth.currentUser?.uid, created_at: now });
+        }
+        await batch.commit();
+      } else {
+        await setDoc(doc(db, 'caixas', caixa.id), { 
+          status: 'REJEITADO', 
+          validado_por: auth.currentUser?.uid,
+          updated_at: new Date().toISOString() 
+        }, { merge: true });
+      }
       onAction();
     } catch (e: any) {
       alert(e.message);
@@ -2161,7 +2231,17 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
               <button onClick={() => setModalOpen('venda')} className="btn-secondary flex items-center gap-2 border-green-200 text-green-700 hover:bg-green-50">
                 <ShoppingCart size={16} /> Registrar Venda
               </button>
-              <button onClick={() => setModalOpen('fechar')} className="btn-primary flex items-center gap-2">
+              <button 
+                onClick={() => {
+                  const pendingVendas = data.vendas ? data.vendas.filter((v: any) => v.tenant_id === currentTenantId && v.caixa_id === null) : [];
+                  const pix = pendingVendas.filter((v: any) => v.forma_pagamento === 'PIX').reduce((acc: number, v: any) => acc + (v.valor_total || 0), 0);
+                  const cartao = pendingVendas.filter((v: any) => v.forma_pagamento === 'CARTAO').reduce((acc: number, v: any) => acc + (v.valor_total || 0), 0);
+                  const dinheiro = pendingVendas.filter((v: any) => v.forma_pagamento === 'DINHEIRO').reduce((acc: number, v: any) => acc + (v.valor_total || 0), 0);
+                  setCashierForm({ total_pix: pix, total_cartao: cartao, total_dinheiro: dinheiro });
+                  setModalOpen('fechar');
+                }} 
+                className="btn-primary flex items-center gap-2"
+              >
                 <Plus size={16} /> Fechar Caixa Hoje
               </button>
             </>
@@ -2192,13 +2272,18 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
                   <div className="text-xl font-black text-slate-900 font-mono">R$ {c.total_vendas.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</div>
                </div>
                <div className="flex flex-col items-end gap-2">
-                  <span className={`tag ${c.status === 'VALIDADO' ? 'tag-success' : 'tag-warning'}`}>
+                  <span className={`tag ${c.status === 'VALIDADO' ? 'tag-success' : c.status === 'REJEITADO' ? 'bg-red-100 text-red-600' : 'tag-warning'}`}>
                     {c.status}
                   </span>
                   {isSuper && c.status === 'FECHADO' && (
-                    <button onClick={() => handleValidate(c.id)} className="text-xs font-black text-blue-600 flex items-center gap-1 hover:underline">
-                      <CheckCircle2 size={12} /> Validar Caixa
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => handleValidate(c, false)} className="text-xs font-black text-red-600 flex items-center gap-1 hover:underline">
+                        <X size={12} /> Rejeitar
+                      </button>
+                      <button onClick={() => handleValidate(c, true)} className="text-xs font-black text-blue-600 flex items-center gap-1 hover:underline">
+                        <CheckCircle2 size={12} /> Validar Caixa
+                      </button>
+                    </div>
                   )}
                </div>
             </div>
@@ -2259,7 +2344,19 @@ function CashierView({ data, userProfile, selectedTenantId, onAction }: { data: 
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Quantidade</label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block">Quantidade</label>
+                    {vendaForm.produto_id && (
+                      <span className="text-[10px] shadow-sm font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full uppercase">
+                        Em Estoque: {
+                          data.stock.find((s: any) => 
+                            s.produto_id === vendaForm.produto_id && 
+                            s.tenant_id === currentTenantId
+                          )?.quantidade || 0
+                        }
+                      </span>
+                    )}
+                  </div>
                   <input type="number" min="1" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm" value={vendaForm.quantidade} onChange={e => setVendaForm({...vendaForm, quantidade: Number(e.target.value)})} />
                 </div>
                 <div>
