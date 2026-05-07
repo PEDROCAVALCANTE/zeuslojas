@@ -24,7 +24,8 @@ import {
   ShoppingCart,
   Search,
   UserPlus,
-  FileUp
+  FileUp,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -241,8 +242,10 @@ export default function ZeusApp() {
         const codigo = String(row['código de b'] || row['codigo de b'] || row['código de barras'] || row['codigo'] || row['código'] || row['cod'] || row['sku'] || row['referênc'] || row['referencia'] || '').trim();
         const nome = String(row['nome'] || row['produto'] || row['descricao'] || row['descrição'] || row['item'] || '').trim();
         const categoria = String(row['categoria'] || row['setor'] || row['grupo'] || 'Diversos').trim();
-        const rawPreco = String(row['valor de ve'] || row['valor de venda'] || row['preco'] || row['preço'] || row['valor'] || row['custo'] || '0').replace(/R\$\s*/gi, '').replace(',', '.');
+        const rawPreco = String(row['valor de ve'] || row['valor de venda'] || row['preco'] || row['preço'] || row['valor'] || '0').replace(/R\$\s*/gi, '').replace(',', '.');
+        const rawCusto = String(row['preço de compra'] || row['preco de compra'] || row['custo'] || row['preço de custo'] || row['preco de custo'] || '0').replace(/R\$\s*/gi, '').replace(',', '.');
         const preco = isNaN(parseFloat(rawPreco)) ? 0 : parseFloat(rawPreco);
+        const custo = isNaN(parseFloat(rawCusto)) ? 0 : parseFloat(rawCusto);
         const rawEstoqueMin = String(row['estoqueminimo'] || row['estoque_minimo'] || row['estoque minimo'] || row['minimo'] || row['min'] || '5');
         const estoqueMinimo = isNaN(parseInt(rawEstoqueMin, 10)) ? 5 : parseInt(rawEstoqueMin, 10);
         let tenantId = String(row['lojaid'] || row['loja_id'] || row['tenant_id'] || row['loja'] || row['filial'] || '').trim();
@@ -280,6 +283,7 @@ export default function ZeusApp() {
             nome,
             categoria,
             preco,
+            custo,
             estoque_minimo: estoqueMinimo,
             ativo,
             tenant_id: tenantId,
@@ -974,6 +978,8 @@ function SearchableProductSelect({
       </div>
 
       {isOpen && (
+        <>
+        <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
         <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
           <div className="p-2 border-b border-slate-100 flex items-center gap-2 bg-slate-50">
             <Search size={16} className="text-slate-400" />
@@ -985,6 +991,9 @@ function SearchableProductSelect({
               onChange={(e) => setSearch(e.target.value)}
               autoFocus
             />
+            <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <X size={16} />
+            </button>
           </div>
           <div className="max-h-60 overflow-y-auto">
             {filteredProducts.length === 0 ? (
@@ -1028,6 +1037,7 @@ function SearchableProductSelect({
             )}
           </div>
         </div>
+        </>
       )}
     </div>
   );
