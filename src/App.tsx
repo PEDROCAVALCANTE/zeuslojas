@@ -1047,6 +1047,7 @@ function SearchableProductSelect({
 function InventoryManagement({ data, selectedTenantId, handleAction, userProfile, uploadingExcel, handleExcelUpload }: { data: any, selectedTenantId: string, handleAction: any, userProfile: any, uploadingExcel?: boolean, handleExcelUpload?: any }) {
   const [modalOpen, setModalOpen] = useState<'entrada' | 'saida' | 'transferencia' | 'produto' | 'edit_produto' | 'apontamento' | null>(null);
   const [view, setView] = useState<'geral' | 'curva' | 'min_estoque'>('geral');
+  const [searchTerm, setSearchTerm] = useState('');
   const [form, setForm] = useState({ 
     produto_id: '', 
     tenant_id: '', 
@@ -1213,6 +1214,11 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
 
       {view === 'geral' && (
         <div className="kpi-card !p-0 overflow-hidden shadow-md border-slate-200">
+          <div className="p-4 border-b border-slate-100 flex items-center gap-2 bg-slate-50">
+             <Search size={16} className="text-slate-400" />
+             <input type="text" placeholder="Buscar produto..." className="w-full text-sm outline-none bg-transparent" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+             {searchTerm && <button onClick={() => setSearchTerm('')} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>}
+          </div>
           <table className="data-table">
             <thead className="bg-slate-50">
               <tr>
@@ -1225,7 +1231,7 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
               </tr>
             </thead>
             <tbody>
-              {data.products.map((p: Produto) => {
+              {data.products.filter((p: Produto) => p.nome.toLowerCase().includes(searchTerm.toLowerCase()) || (p.codigo && p.codigo.toLowerCase().includes(searchTerm.toLowerCase()))).map((p: Produto) => {
                 const qty = selectedTenantId === 'all' ? getGlobalStock(p.id) : getStockQty(p.id, selectedTenantId);
                 const isCrit = qty < p.estoque_minimo;
                 return (
@@ -1276,6 +1282,11 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
 
       {view === 'curva' && (
         <div className="kpi-card !p-0 overflow-hidden shadow-md border-slate-200">
+          <div className="p-4 border-b border-slate-100 flex items-center gap-2 bg-slate-50">
+             <Search size={16} className="text-slate-400" />
+             <input type="text" placeholder="Buscar produto..." className="w-full text-sm outline-none bg-transparent" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+             {searchTerm && <button onClick={() => setSearchTerm('')} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>}
+          </div>
           <table className="data-table">
             <thead className="bg-slate-50">
               <tr>
@@ -1287,7 +1298,7 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
               </tr>
             </thead>
             <tbody>
-              {curvaVendas.map((p: any, idx: number) => (
+              {curvaVendas.filter((p: any) => p.nome.toLowerCase().includes(searchTerm.toLowerCase()) || (p.codigo && p.codigo.toLowerCase().includes(searchTerm.toLowerCase()))).map((p: any, idx: number) => (
                 <tr key={p.id}>
                   <td className="font-black text-slate-400 italic">#{idx + 1}</td>
                   <td className="font-bold text-slate-800">{p.nome}</td>
@@ -1303,6 +1314,11 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
 
       {view === 'min_estoque' && (
         <div className="kpi-card !p-0 overflow-hidden shadow-md border-slate-200">
+          <div className="p-4 border-b border-slate-100 flex items-center gap-2 bg-slate-50">
+             <Search size={16} className="text-slate-400" />
+             <input type="text" placeholder="Buscar produto..." className="w-full text-sm outline-none bg-transparent" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+             {searchTerm && <button onClick={() => setSearchTerm('')} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>}
+          </div>
           <table className="data-table">
             <thead className="bg-slate-50">
               <tr>
@@ -1314,7 +1330,7 @@ function InventoryManagement({ data, selectedTenantId, handleAction, userProfile
               </tr>
             </thead>
             <tbody>
-              {minEstoque.map((p: any) => {
+              {minEstoque.filter((p: any) => p.nome.toLowerCase().includes(searchTerm.toLowerCase()) || (p.codigo && p.codigo.toLowerCase().includes(searchTerm.toLowerCase()))).map((p: any) => {
                 const isCrit = p.qty < p.estoque_minimo;
                 const diff = p.estoque_minimo - p.qty;
                 return (
